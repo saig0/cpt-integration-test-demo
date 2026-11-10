@@ -11,8 +11,8 @@ cd "$(dirname "$0")/.."
 VERSION="${1:-$(sed -n 's#.*<camunda.version>\(.*\)</camunda.version>.*#\1#p' pom.xml | head -1)}"
 
 # Clock control is process-scoped: it must be set on every start.
-# 8.9 and 8.10 read zeebe.clock.controlled, newer versions camunda.system.clock-controlled.
-# Both are set, the unused one is ignored.
+# C8 Run 8.9, 8.10 and 8.11 accept both spellings (verified). The documented one for 8.9/8.10 is
+# zeebe.clock.controlled, for newer versions camunda.system.clock-controlled. Set both to be safe.
 export ZEEBE_CLOCK_CONTROLLED=true
 export CAMUNDA_SYSTEM_CLOCKCONTROLLED=true
 
