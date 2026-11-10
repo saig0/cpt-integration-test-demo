@@ -116,7 +116,7 @@ Stop the cluster with `c8ctl cluster stop`.
 ## Run on Camunda 8 SaaS
 
 SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore turns off the data
-deletion and the clock reset, increases the assertion timeout and skips the timer test.
+deletion and the clock reset, increases the assertion timeout and skips the timer tests (Java and JSON).
 
 1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate`.
 2. `cp .env.example .env`, fill in the values, and load them: `set -a; . .env; set +a`
