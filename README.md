@@ -17,25 +17,34 @@ connectors of a real system.
 ```
 .
 ├── workers/          Spring Boot app with the job workers (the "external services"). Started independently.
-├── process-tests/    CPT tests + the BPMN model. Connects to a remote cluster. No job workers inside.
+├── process-tests/    CPT tests (Java + JSON), the BPMN and the DMN. Connects to a remote cluster. No job workers inside.
 ├── scripts/          start-c8run.sh: start C8 Run with a controllable clock
 ├── docs/             Capabilities, limitations and version differences
 └── .env.example      SaaS credentials template
 ```
 
 The process is the invoice approval example from the CPT example project
-([`InvoiceApprovalTest`](https://github.com/camunda/camunda/blob/6ab4768e13d622de3d0901b32fb4aad54282b8c6/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceApprovalTest.java)).
-The only change to the model: the *Send invoice rejection* task is no longer an HTTP JSON connector, but a plain
-service task with the job type `send-invoice-rejection`, handled by a job worker.
+([`InvoiceApprovalTest`](https://github.com/camunda/camunda/blob/09bdbbc1b704ef96ecca0e192cc9c7b46249c465/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceApprovalTest.java),
+[`InvoiceDecisionTest`](https://github.com/camunda/camunda/blob/09bdbbc1b704ef96ecca0e192cc9c7b46249c465/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceDecisionTest.java),
+[`InvoiceApprovalJsonTest`](https://github.com/camunda/camunda/blob/96e0c444f3c4dcddcc94c327618b4130f31ff57e/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceApprovalJsonTest.java))
+with its BPMN and the DMN `auto-approve-invoice`. The only change to the model: the *Send invoice rejection* task is no
+longer an HTTP JSON connector, but a plain service task with the job type `send-invoice-rejection`, handled by a job worker.
 
-| Task                           | Job type                   | Handled by                      |
-| ------------------------------ | -------------------------- | ------------------------------- |
-| Archive invoice                | `archive-invoice`          | `workers` (fails for `…LEGACY-ERROR…` IDs) |
+| Element                        | Job type / decision         | Handled by                      |
+| ------------------------------ | --------------------------- | ------------------------------- |
+| Auto-approve invoice           | DMN `auto-approve-invoice`  | the cluster (deployed by the tests) |
+| Archive invoice                | `archive-invoice`           | `workers` (fails for `…LEGACY-ERROR…` IDs) |
 | Add invoice to accounting      | `add-invoice-to-accounting` | `workers`                       |
-| Send invoice rejection         | `send-invoice-rejection`   | `workers` (replaces the connector) |
-| Approve / manually archive     | user tasks                 | the tests (`completeUserTask`)   |
+| Send invoice rejection         | `send-invoice-rejection`    | `workers` (replaces the connector) |
+| Approve / manually archive     | user tasks                  | the tests (`completeUserTask`)  |
 
-> The example project has no DMN resource, so this demo has none either.
+Tests in `process-tests/src/test`:
+
+| Test | Style | Covers |
+| --- | --- | --- |
+| `InvoiceApprovalTest` | Java | happy path, rejection, auto-approval (DMN), approval timeout (clock), archive error |
+| `InvoiceDecisionTest` | Java, parameterized | the decision table, 7 rows |
+| `InvoiceApprovalJsonTest` | JSON (`test-cases/*.json`, `test-cases-clock/*.json`) | the same paths and decision rows as JSON test cases |
 
 ## How it works
 
@@ -95,7 +104,7 @@ mvn -pl workers spring-boot:run
 mvn -pl process-tests test
 ```
 
-All four tests pass: happy path, rejection, approval timeout (needs the clock), archive system error.
+All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timeout tests need the controllable clock.
 A coverage report is written to `process-tests/target/coverage-report/report.html`.
 
 Stop the cluster with `c8ctl cluster stop`.
