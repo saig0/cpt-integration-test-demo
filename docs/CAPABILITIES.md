@@ -7,7 +7,7 @@ How to read the claims:
 
 | Mark | Meaning |
 | --- | --- |
-| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 4 tests, external workers). |
+| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 21 tests: Java, decision and JSON tests; external workers). |
 | 🔎 **source** | Derived from the CPT source (tags `8.9.28`, `8.10.9`, `8.11.0-alpha1`, `main`), the released jars or the docs. Not run. |
 | ❓ **unverified** | Plausible, but not tested — mostly because no SaaS cluster / secured self-managed cluster was available. |
 
@@ -54,6 +54,8 @@ C8 Run = dedicated local cluster. Shared/SaaS = a cluster that must not be wiped
 | External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ❓ |
 | BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ❓ |
 | Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ❌ no clock on SaaS ≤ 8.10 (#23160); 8.11 final: ❓ via public clock API |
+| DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ❓ |
+| JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ⚠️ fixed data, selectors by definition ID (see 6) |
 | Process coverage report | ✅ | ✅ | ✅ | ❓ |
 | Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API |
 | Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | needed |
@@ -65,7 +67,6 @@ C8 Run = dedicated local cluster. Shared/SaaS = a cluster that must not be wiped
 | Secrets for connectors | 🔎 cluster owns them | 🔎 `cluster-secrets` ignored + warning | 🔎 same | 🔎 same |
 | Multi-tenancy toggle of CPT | 🔎 ignored + warning (remote) | 🔎 | 🔎 | 🔎 |
 | Authenticated cluster (Basic, OIDC) | ❓ via `camunda.client.auth.*` (docs) | ❓ | ❓ | ❓ |
-| JSON test cases (`.test.json`) | ❓ not tried | ❓ | ❓ | ❓ |
 
 ## Limitations and blockers
 
@@ -145,9 +146,14 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 * Workers log `500 Internal Server Error` while activating jobs during the purge, then recover (✅, harmless).
 * The `-parameters` compiler flag is needed for `@Variable` without a name when you don't use the Spring Boot parent (✅).
 * 8.11.0-alpha1 is an alpha. The version of this demo's `main` will move.
-* The example project has no DMN resource; DMN is not covered. `mockDmnDecision` deploys a stub DMN (🔎).
+* `mockDmnDecision("auto-approve-invoice", …)` would deploy a stub DMN with the *same* decision ID (🔎). Without purge, it replaces the real
+  decision for all later instances. The demo doesn't use it; it evaluates the real decision.
+* JSON test cases (✅ on all three versions): they use fixed data and select by process definition ID (`processDefinitionId`), not by
+  instance — so on a shared cluster they depend on the cleanup/start-time isolation, unlike the Java tests. The example's
+  `MOCK_JOB_WORKER_*` instructions were dropped (they'd compete with the external workers, limitation 5). The schema for 8.11
+  (`…/cpt-test-cases/8.11/schema.json`) is not published yet (404); the files reference the 8.10 schema.
 * Secrets: CPT's `connectors-secrets` / `cluster-secrets` are ignored for remote runtimes (🔎, warning since 8.10).
-* Not verified: SaaS, authenticated clusters, OpenShift, parallel test execution, JSON test cases, the 8.11 final CPT.
+* Not verified: SaaS, authenticated clusters, OpenShift, parallel test execution, the 8.11 final CPT.
 
 ## Version differences
 
@@ -196,4 +202,4 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 **Validation still open**
 7. Run this demo against a real SaaS cluster (credentials needed; the `saas` profile is untested) and against an OpenShift cluster with
    authentication: management API access, `authorizations`, outbound connector runtime, GitLab CI job.
-8. Try JSON test cases and parallel execution with the remote runtime.
+8. Try parallel test execution with the remote runtime.
