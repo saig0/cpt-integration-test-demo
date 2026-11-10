@@ -4,6 +4,8 @@ Input for [camunda/camunda#64034](https://github.com/camunda/camunda/issues/6403
 Versions: CPT / C8 Run **8.9.28**, **8.10.9**, **8.11.0-alpha1**. For 8.11 the demo also uses the **CPT `8.11.0-SNAPSHOT`** (build of 2026-11-10,
 including the public clock API) against C8 Run 8.11.0-alpha1, until the next alpha is released. All verified with this demo.
 Below, "8.11-alpha1" means the released alpha1 CPT jar, "8.11-SNAPSHOT" the snapshot.
+**SaaS** was verified for 8.11 only: a cluster on the Camunda INT stage (`ultrawombat.com`, version 8.11.0-alpha1) with the 8.11-SNAPSHOT CPT.
+8.10 and 8.9 were not run on SaaS.
 
 How to read the claims:
 
@@ -11,6 +13,7 @@ How to read the claims:
 | --- | --- |
 | ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 21 tests: Java, decision and JSON tests; external workers). The 8.11-SNAPSHOT runs against C8 Run 8.11.0-alpha1. |
 | 🔎 **source** | Derived from the CPT source (tags `8.9.28`, `8.10.9`, `8.11.0-alpha1`, `main`), the released jars or the docs. Not run. |
+| ☁️ **verified on SaaS** | Run against the INT-stage SaaS cluster above (8.11 only). |
 | ❓ **unverified** | Plausible, but not tested — mostly because no SaaS cluster / secured self-managed cluster was available. |
 
 ## TL;DR
@@ -26,11 +29,15 @@ How to read the claims:
    fails with `Cluster is unhealthy` (#62541, ✅ reproduced). The public clock API (#23160, CPT PR #66862, merged to `main` on
    2026-10-28, after the alpha1 release candidates) fixes it — it is **not in the 8.11.0-alpha1 CPT jar** (✅ it still calls
    `/actuator/clock`), but **in 8.11.0-SNAPSHOT: ✅ all 21 tests pass with `data-deletion-mode: none` and `increaseTime`.**
-5. **With the 8.11-SNAPSHOT the whole suite, including the timer tests, ran without the management API and without a
+5. **SaaS works for everything except the clock (☁️ 8.11).** Against a real SaaS cluster (8.11.0-alpha1, `mode: saas`, external workers on the same
+   cluster, `data-deletion-mode: none`) 19 of 21 tests pass; the 2 timer tests are the exception (see limitation 10). A second run on top of the
+   data of the first run passes as well (☁️): unique IDs, scoped selectors and the start-time isolation (via `GET /v2/clock`) keep the runs apart.
+   Don't use `increaseTime` on SaaS: it stalled the search index of the cluster (limitation 10).
+6. **With the 8.11-SNAPSHOT the whole suite, including the timer tests, ran without the management API and without a
    controllable-clock flag** (✅ local cluster, management port set to a closed port, purge off). That is the best case for a
    shared environment; SaaS itself is still ❓ unverified.
-6. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
-7. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
+7. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
+8. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
    unless told otherwise.
 
 ## What a remote run needs
@@ -56,25 +63,25 @@ The first four columns ran on a dedicated local C8 Run (8.11-SNAPSHOT: CPT snaps
 
 | Capability | C8 Run 8.9 | C8 Run 8.10 | 8.11-alpha1 | 8.11-SNAPSHOT | Shared / SaaS |
 | --- | --- | --- | --- | --- | --- |
-| Deploy BPMN (`@Deployment`), start instances | ✅ | ✅ | ✅ | ✅ | ❓ expected to work |
-| Process-instance and user-task assertions | ✅ | ✅ | ✅ | ✅ | ❓ needs a longer `assertion.timeout` |
-| Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ✅ | ❓ |
-| External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ✅ | ❓ |
-| BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ✅ | ❓ |
-| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 (#23160); 8.11: ❓ public clock API on SaaS |
-| DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ✅ | ❓ |
-| JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ✅ | ⚠️ fixed data, selectors by definition ID (see 6) |
+| Deploy BPMN (`@Deployment`), start instances | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| Process-instance and user-task assertions | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11, with `assertion.timeout` 30 s |
+| Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 (#23160). 8.11: ☁️ `increaseTime` works, but ❌ stalled the search index (limitation 10) |
+| DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 passed, ⚠️ fixed data, selectors by definition ID (see 6) |
 | Process coverage report | ✅ | ✅ | ✅ | ✅ | ❓ |
-| Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API |
+| Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API, use `data-deletion-mode: none` (☁️ works) |
 | Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | ✅ same | needed |
-| Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ✅ works without management API (clock read via REST; no warning) | ⚠️ ≤ alpha1: falls back to *off* when the management API is unreachable (✅ warning) |
-| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ #62541 ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot (local cluster) |
+| Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ✅ works without management API (clock read via REST; no warning). ☁️ also on SaaS: the second run on leftover data passed | ⚠️ ≤ alpha1: falls back to *off* when the management API is unreachable (✅ warning) |
+| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ #62541 ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot on a local cluster. ☁️ **SaaS: ❌ the search index stalled** (limitation 10) |
 | `mockJobWorker` for a type that real workers also serve | ⚠️ competes ✅ | ⚠️ | ⚠️ ✅ | ⚠️ | ⚠️ |
 | `mockChildProcess`, `mockDmnDecision` | 🔎 deploy stub resources | 🔎 | 🔎 | 🔎 | ⚠️ stubs stay on the cluster without purge |
 | Connectors | 🔎 run in the cluster's connector runtime, CPT doesn't start them | 🔎 | 🔎 | 🔎 | 🔎 same |
 | Secrets for connectors | 🔎 cluster owns them | 🔎 `cluster-secrets` ignored + warning | 🔎 same | 🔎 same | 🔎 same |
 | Multi-tenancy toggle of CPT | 🔎 ignored + warning (remote) | 🔎 | 🔎 | 🔎 | 🔎 |
-| Authenticated cluster (Basic, OIDC) | ❓ via `camunda.client.auth.*` (docs) | ❓ | ❓ | ❓ | ❓ |
+| Authenticated cluster (Basic, OIDC) | ❓ via `camunda.client.auth.*` (docs) | ❓ | ❓ | ❓ | ☁️ OAuth client credentials (SaaS) 8.11 |
 
 ## Limitations and blockers
 
@@ -111,6 +118,21 @@ the clock reset (`DELETE /actuator/clock` → 200); a purge (or restart) recover
   `POST /v2/clock/reset`) was already in C8 Run 8.11.0-alpha1.
 * Workaround (8.10, 8.11-alpha1 jar): no `increaseTime` together with `none`. Test timers on a dedicated cluster with purge,
   or make the timer duration a process variable and use short durations on the shared cluster.
+
+### 10. SaaS: `increaseTime` stalled the search index of the cluster — ☁️ observed on 8.11 (SNAPSHOT CPT, 8.11.0-alpha1 cluster)
+The suite with the timer tests enabled (`demo.clock-manipulation.enabled=true`, `clock-reset-enabled: true`): the first test that ran was the JSON
+timer test (`INCREASE_TIME` `P5D`) — it passed, and CPT reset the clock afterwards (`GET /v2/clock` showed the real time again). **All 20 following tests failed**
+with "No process instance / user task / decision instance … found". The engine kept working (a probe instance was processed by the external workers), the
+cluster topology stayed `healthy`, but **the search API (`POST /v2/process-instances/search`, `/v2/decision-instances/search`) returned nothing newer than the
+timer test's instance**: no new data was indexed. This resembles #62541 (a clock jump leaves the cluster in a bad state), but on SaaS there is no
+purge/restart to recover from — **the index had not recovered 21 minutes later** (checked until 12:09Z; the clock and the topology were normal, the search still returned the 17 instances up to
+  the timer test, although the cluster had processed ~30 more instances and one probe instance). Nothing was tried on the SaaS side (no purge available);
+  recovering the search probably needs a restart/recreation of the cluster by its owner. ❓ Whether it recovers by itself (for example when the real time passes
+  the 5 days of the jump) is not known.
+* Not reproduced locally (C8 Run 8.11.0-alpha1 with the same snapshot: 21/21, also with `none`). The secondary storage is different (C8 Run vs. SaaS), so it
+  looks storage/exporter related. ❓ Root cause unknown; a candidate for an issue (needs the SaaS team).
+* Conclusion: **do not manipulate the clock on a SaaS (or any shared) cluster.** Test timers there with short, configurable timer durations instead. The
+  `saas` profile keeps the timer tests off.
 
 ### 4. Job workers: stale REST long-polling with `data-deletion-mode: none` (#62521, open) — ❓ not reproduced
 Workers that run **in the test JVM** (Spring Boot default `@JobWorker`s, CPT mocks) keep their long-poll request across tests and can
@@ -150,7 +172,7 @@ target environment**. With `none` + `clock-reset-enabled: false` + no `increaseT
 
 ### 8. Eventual consistency — 🔎
 Assertions query the secondary storage, which is filled asynchronously. They retry until `camunda.process-test.assertion.timeout`
-(default 10 s). Remote/SaaS needs more (the `saas` profile uses 30 s).
+(default 10 s). Remote/SaaS needs more (the `saas` profile uses 30 s). ☁️ A suite run on SaaS takes ~1.5-2 min vs. ~45 s locally (JSON tests 33-51 s vs. 23 s).
 
 ### 9. Smaller points
 * **8.9 dependency conflict** (✅): with the Spring Boot 4.0 BOM, the 8.9.28 client fails with
@@ -167,7 +189,10 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
   `MOCK_JOB_WORKER_*` instructions were dropped (they'd compete with the external workers, limitation 5). The schema for 8.11
   (`…/cpt-test-cases/8.11/schema.json`) is not published yet (404); the files reference the 8.10 schema.
 * Secrets: CPT's `connectors-secrets` / `cluster-secrets` are ignored for remote runtimes (🔎, warning since 8.10).
-* Not verified: SaaS (also the availability of the public clock API there), authenticated clusters incl. the `SYSTEM` authorizations,
+* SaaS specifics (☁️): the Spring SDK `saas` mode points to `camunda.io`; for another stage set `camunda.client.cloud.domain` (here `ultrawombat.com`) —
+  token URL, audience and addresses follow. Explicit `rest-address`/`grpc-address` in the base `application.yaml` also override the SaaS mode (a bug of this
+  demo, fixed). The credentials file of the console also exports `ZEEBE_*` variables: the SDK logs deprecation warnings for them.
+* Not verified: SaaS with 8.10/8.9, authenticated self-managed clusters incl. the `SYSTEM` authorizations,
   OpenShift, parallel test execution, the 8.11 final CPT.
 
 ## Version differences
@@ -220,7 +245,7 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 6. Scope assertions/utilities/mocks to the process instances created by the test (limitations 5, 6) so shared-cluster tests are safe by default.
 
 **Validation still open**
-7. Run this demo against a real SaaS cluster (credentials needed; the `saas` profile is untested; check that the public clock API is
-   available there, then the 8.11 timer tests could run on SaaS too) and against an OpenShift cluster with
+7. Report/analyze limitation 10 (clock manipulation on SaaS stalls the search index) with the SaaS team; until then the timer tests stay off on SaaS.
+   Run the demo against an OpenShift cluster with
    authentication: management API access, `authorizations`, outbound connector runtime, GitLab CI job.
 8. Try parallel test execution with the remote runtime.
