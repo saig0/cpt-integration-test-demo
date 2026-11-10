@@ -1,7 +1,9 @@
 package io.camunda.demo;
 
+import static io.camunda.process.test.api.CamundaAssert.assertThatDecision;
 import static io.camunda.process.test.api.CamundaAssert.assertThatProcessInstance;
 import static io.camunda.process.test.api.CamundaAssert.assertThatUserTask;
+import static io.camunda.process.test.api.assertions.DecisionSelectors.byProcessInstanceKey;
 import static io.camunda.process.test.api.assertions.ElementSelectors.byId;
 import static io.camunda.process.test.api.assertions.UserTaskSelectors.byElementId;
 
@@ -104,6 +106,31 @@ public class InvoiceApprovalTest {
         .isCompleted();
   }
 
+  @DisplayName("Path when the invoice is approved automatically by the decision")
+  @Test
+  void autoApproval() {
+    // given: a small invoice (< 50 EUR) that the DMN decision "auto-approve-invoice" approves
+    final String invoiceId = newInvoiceId("AUTO");
+
+    // when
+    final ProcessInstanceEvent processInstance = startProcess(invoiceId, 30, "1089");
+
+    // then: no human is involved
+    assertThatProcessInstance(processInstance)
+        .hasCompletedElementsInOrder(
+            byId("StartEvent_InvoiceReceived"),
+            byId("Activity_13m8dmh"),
+            byId("ServiceTask_ArchiveInvoice"),
+            byId("ServiceTask_AddInvoiceAccounting"),
+            byId("EndEvent_InvoiceApproved"))
+        .hasNotActivatedElements(byId("UserTask_ApproveInvoice"))
+        .hasVariable("auto_approve", true)
+        .hasVariable("accountingEntryId", "ACC-" + invoiceId)
+        .isCompleted();
+    assertThatDecision(byProcessInstanceKey(processInstance.getProcessInstanceKey()))
+        .hasOutput(true);
+  }
+
   /**
    * Requires to manipulate the clock of the cluster. This is possible with C8 Run if the clock is
    * controllable (see README), but not with SaaS. The test is disabled if {@code
@@ -174,16 +201,22 @@ public class InvoiceApprovalTest {
   }
 
   private ProcessInstanceEvent startProcess(final String invoiceId) {
+    // 12000 EUR from supplier 0815: the decision requires a manual approval
+    return startProcess(invoiceId, 12000, "0815");
+  }
+
+  private ProcessInstanceEvent startProcess(
+      final String invoiceId, final int amount, final String supplierId) {
     final Map<String, Object> invoice =
         Map.of(
             "id",
             invoiceId,
             "amount",
-            12000,
+            amount,
             "currency",
             "EUR",
             "supplier",
-            Map.of("id", "0815", "name", "Acme GmbH"),
+            Map.of("id", supplierId, "name", "Acme GmbH"),
             "contactEmail",
             "accounting@acme.com");
 
