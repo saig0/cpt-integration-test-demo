@@ -1,0 +1,489 @@
+{
+  "$schema": "https://camunda.com/json-schema/cpt-test-cases/8.10/schema.json",
+  "testCases": [
+    {
+      "name": "Happy path",
+      "description": "Happy path through the process (the external workers archive the invoice and add it to accounting)",
+      "instructions": [
+        {
+          "type": "CREATE_PROCESS_INSTANCE",
+          "processDefinitionSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "approver": "Zee",
+            "invoice": {
+              "id": "INV-JSON-HAPPY",
+              "amount": 12000,
+              "currency": "EUR",
+              "supplier": {
+                "id": "0815",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "UserTask_ApproveInvoice"
+            }
+          ],
+          "state": "IS_ACTIVE"
+        },
+        {
+          "type": "ASSERT_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "state": "IS_CREATED",
+          "assignee": "Zee"
+        },
+        {
+          "type": "COMPLETE_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "variables": {
+            "approved": true
+          }
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "StartEvent_InvoiceReceived"
+            },
+            {
+              "elementId": "Activity_13m8dmh"
+            },
+            {
+              "elementId": "UserTask_ApproveInvoice"
+            },
+            {
+              "elementId": "ServiceTask_ArchiveInvoice"
+            },
+            {
+              "elementId": "ServiceTask_AddInvoiceAccounting"
+            },
+            {
+              "elementId": "EndEvent_InvoiceApproved"
+            }
+          ],
+          "state": "IS_COMPLETED_IN_ORDER"
+        },
+        {
+          "type": "ASSERT_VARIABLES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "archiveReference": "ARCHIVE-INV-JSON-HAPPY",
+            "accountingEntryId": "ACC-INV-JSON-HAPPY"
+          }
+        },
+        {
+          "type": "ASSERT_PROCESS_INSTANCE",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "state": "IS_COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "Rejection path",
+      "description": "Path when the invoice was rejected (the external worker sends the rejection)",
+      "instructions": [
+        {
+          "type": "CREATE_PROCESS_INSTANCE",
+          "processDefinitionSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "approver": "Zee",
+            "invoice": {
+              "id": "INV-JSON-REJECTED",
+              "amount": 12000,
+              "currency": "EUR",
+              "supplier": {
+                "id": "0815",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "state": "IS_CREATED",
+          "assignee": "Zee"
+        },
+        {
+          "type": "COMPLETE_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "variables": {
+            "approved": false,
+            "rejectionReason": "it is a test case :-)"
+          }
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "StartEvent_InvoiceReceived"
+            },
+            {
+              "elementId": "UserTask_ApproveInvoice"
+            },
+            {
+              "elementId": "Gateway_Approved"
+            },
+            {
+              "elementId": "ServiceTask_SendRejection"
+            },
+            {
+              "elementId": "EndEvent_InvoiceRejected"
+            }
+          ],
+          "state": "IS_COMPLETED_IN_ORDER"
+        },
+        {
+          "type": "ASSERT_VARIABLES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "rejectionNotificationId": "REJECTION-INV-JSON-REJECTED"
+          }
+        },
+        {
+          "type": "ASSERT_PROCESS_INSTANCE",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "state": "IS_COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "Auto-approval",
+      "description": "Path when the decision approves the invoice automatically",
+      "instructions": [
+        {
+          "type": "CREATE_PROCESS_INSTANCE",
+          "processDefinitionSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "approver": "Zee",
+            "invoice": {
+              "id": "INV-JSON-AUTO",
+              "amount": 30,
+              "currency": "EUR",
+              "supplier": {
+                "id": "1089",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "StartEvent_InvoiceReceived"
+            },
+            {
+              "elementId": "Activity_13m8dmh"
+            },
+            {
+              "elementId": "ServiceTask_ArchiveInvoice"
+            },
+            {
+              "elementId": "ServiceTask_AddInvoiceAccounting"
+            },
+            {
+              "elementId": "EndEvent_InvoiceApproved"
+            }
+          ],
+          "state": "IS_COMPLETED_IN_ORDER"
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "UserTask_ApproveInvoice"
+            }
+          ],
+          "state": "IS_NOT_ACTIVATED"
+        },
+        {
+          "type": "ASSERT_VARIABLES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "auto_approve": true,
+            "accountingEntryId": "ACC-INV-JSON-AUTO"
+          }
+        },
+        {
+          "type": "ASSERT_PROCESS_INSTANCE",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "state": "IS_COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "Archive system error",
+      "description": "Path when the archive system raises an error (the external worker throws the BPMN error for this invoice ID)",
+      "instructions": [
+        {
+          "type": "CREATE_PROCESS_INSTANCE",
+          "processDefinitionSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "variables": {
+            "approver": "Zee",
+            "invoice": {
+              "id": "INV-JSON-LEGACY-ERROR",
+              "amount": 12000,
+              "currency": "EUR",
+              "supplier": {
+                "id": "0815",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "state": "IS_CREATED",
+          "assignee": "Zee"
+        },
+        {
+          "type": "COMPLETE_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ApproveInvoice"
+          },
+          "variables": {
+            "approved": true
+          }
+        },
+        {
+          "type": "ASSERT_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ManuallyArchiveInvoice"
+          },
+          "state": "IS_CREATED",
+          "candidateGroups": [
+            "archive-team"
+          ]
+        },
+        {
+          "type": "COMPLETE_USER_TASK",
+          "userTaskSelector": {
+            "elementId": "UserTask_ManuallyArchiveInvoice"
+          }
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "StartEvent_InvoiceReceived"
+            },
+            {
+              "elementId": "UserTask_ApproveInvoice"
+            },
+            {
+              "elementId": "UserTask_ManuallyArchiveInvoice"
+            },
+            {
+              "elementId": "ServiceTask_AddInvoiceAccounting"
+            },
+            {
+              "elementId": "EndEvent_InvoiceApproved"
+            }
+          ],
+          "state": "IS_COMPLETED_IN_ORDER"
+        },
+        {
+          "type": "ASSERT_ELEMENT_INSTANCES",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "elementSelectors": [
+            {
+              "elementId": "ServiceTask_ArchiveInvoice"
+            }
+          ],
+          "state": "IS_TERMINATED"
+        },
+        {
+          "type": "ASSERT_PROCESS_INSTANCE",
+          "processInstanceSelector": {
+            "processDefinitionId": "Process_InvoiceApproval"
+          },
+          "state": "IS_COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "Decision: 30 EUR from supplier 1089",
+      "description": "Evaluate the DMN decision auto-approve-invoice",
+      "instructions": [
+        {
+          "type": "EVALUATE_DECISION",
+          "decisionDefinitionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "variables": {
+            "invoice": {
+              "id": "INV-DECISION",
+              "amount": 30,
+              "currency": "EUR",
+              "supplier": {
+                "id": "1089",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_DECISION",
+          "decisionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "output": true
+        }
+      ]
+    },
+    {
+      "name": "Decision: 220 EUR from supplier 0815",
+      "description": "Evaluate the DMN decision auto-approve-invoice",
+      "instructions": [
+        {
+          "type": "EVALUATE_DECISION",
+          "decisionDefinitionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "variables": {
+            "invoice": {
+              "id": "INV-DECISION",
+              "amount": 220,
+              "currency": "EUR",
+              "supplier": {
+                "id": "0815",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_DECISION",
+          "decisionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "output": false
+        }
+      ]
+    },
+    {
+      "name": "Decision: 220 EUR from supplier 1234",
+      "description": "Evaluate the DMN decision auto-approve-invoice",
+      "instructions": [
+        {
+          "type": "EVALUATE_DECISION",
+          "decisionDefinitionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "variables": {
+            "invoice": {
+              "id": "INV-DECISION",
+              "amount": 220,
+              "currency": "EUR",
+              "supplier": {
+                "id": "1234",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_DECISION",
+          "decisionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "output": true
+        }
+      ]
+    },
+    {
+      "name": "Decision: 7500 EUR from supplier 0405",
+      "description": "Evaluate the DMN decision auto-approve-invoice",
+      "instructions": [
+        {
+          "type": "EVALUATE_DECISION",
+          "decisionDefinitionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "variables": {
+            "invoice": {
+              "id": "INV-DECISION",
+              "amount": 7500,
+              "currency": "EUR",
+              "supplier": {
+                "id": "0405",
+                "name": "Acme GmbH"
+              },
+              "contactEmail": "accounting@acme.com"
+            }
+          }
+        },
+        {
+          "type": "ASSERT_DECISION",
+          "decisionSelector": {
+            "decisionDefinitionId": "auto-approve-invoice"
+          },
+          "output": false
+        }
+      ]
+    }
+  ]
+}
