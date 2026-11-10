@@ -8,8 +8,8 @@ tests against an **already running Camunda 8 cluster** (local C8 Run by default,
 alternative), while the **job workers run as separate applications** — like the external services and custom
 connectors of a real system.
 
-> **Branch `main` — Camunda `8.11.0-alpha1`.** Variations for the other versions live in the branches
-> [`8.10`](../../tree/8.10) and [`8.9`](../../tree/8.9). What works in which version, the limitations and the
+> **Branch `8.9` — Camunda `8.9.28`.** The other versions live in the branches
+> [`main`](../../tree/main) (`8.11.0-alpha1`) and [`8.10`](../../tree/8.10) (`8.10.9`). What works in which version, the limitations and the
 > recommended next steps are collected in **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
 ## What is in here
@@ -74,14 +74,14 @@ service task with the job type `send-invoice-rejection`, handled by a job worker
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster** with a controllable clock. The script starts the version of `camunda.version` (`8.11.0-alpha1` on this branch). `c8ctl` downloads it if needed.
+**1. Start the cluster** with a controllable clock. The script starts the version of `camunda.version` (`8.9.28` on this branch). `c8ctl` downloads it if needed.
 
 ```bash
 scripts/start-c8run.sh
 ```
 
 The script starts C8 Run and verifies that the clock is controllable. Without that, only the timer test fails.
-Equivalent manual start: `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start 8.11.0-alpha1`.
+Equivalent manual start: `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start 8.9.28`.
 
 **2. Start the job workers** in a second terminal. They keep running across test runs.
 
@@ -106,8 +106,9 @@ Stop the cluster with `c8ctl cluster stop`.
 
 ## Run on Camunda 8 SaaS
 
-SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore turns off the data
-deletion and the clock reset, increases the assertion timeout and skips the timer test.
+SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore skips the timer test
+and increases the assertion timeout. CPT 8.9 can't turn off the data deletion and the clock reset (8.10+ can): it logs
+`Failed to delete the runtime data, skipping` after each test. See [limitations](docs/CAPABILITIES.md#limitations-and-blockers).
 
 1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate`.
 2. `cp .env.example .env`, fill in the values, and load them: `set -a; . .env; set +a`
@@ -136,7 +137,7 @@ deletion and the clock reset, increases the assertion timeout and skips the time
 | Camunda version of the branch | `camunda.version` in the root `pom.xml` |
 
 Any property can be overridden on the command line, for example
-`mvn -pl process-tests test -Dcamunda.process-test.data-deletion-mode=none` (8.10+).
+`mvn -pl process-tests test -Dcamunda.process-test.assertion.timeout=PT30S`.
 
 ## Troubleshooting
 
