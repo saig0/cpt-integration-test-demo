@@ -129,8 +129,11 @@ purge/restart to recover from — **the index had not recovered 21 minutes later
   the timer test, although the cluster had processed ~30 more instances and one probe instance). Nothing was tried on the SaaS side (no purge available);
   recovering the search probably needs a restart/recreation of the cluster by its owner. ❓ Whether it recovers by itself (for example when the real time passes
   the 5 days of the jump) is not known.
-* Not reproduced locally (C8 Run 8.11.0-alpha1 with the same snapshot: 21/21, also with `none`). The secondary storage is different (C8 Run vs. SaaS), so it
-  looks storage/exporter related. ❓ Root cause unknown; a candidate for an issue (needs the SaaS team).
+* Not reproduced locally (C8 Run 8.11.0-alpha1 with the same snapshot: 21/21, also with `none`). **The secondary storage differs:** C8 Run is
+  configured with `secondary-storage.type: rdbms` on a file-based H2 database (✅ `configuration/application.yaml` of C8 Run 8.11.0-alpha1), while SaaS
+  presumably uses Elasticsearch with its exporter (❓ not confirmed). **Working hypothesis:** the Elasticsearch exporter/indices don't cope with the +5 days jump
+  and the jump back (for example time-based indices or archiving, or an exporter that stalls on timestamps going backwards). ❓ Not verified: reproducing it with
+  a local C8 Run on Elasticsearch would confirm or rule out the storage as the cause. Root cause unknown; a candidate for an issue.
 * Conclusion: **do not manipulate the clock on a SaaS (or any shared) cluster.** Test timers there with short, configurable timer durations instead. The
   `saas` profile keeps the timer tests off.
 
