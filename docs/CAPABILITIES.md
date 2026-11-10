@@ -11,7 +11,7 @@ How to read the claims:
 
 | Mark | Meaning |
 | --- | --- |
-| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 21 tests: Java, decision and JSON tests; external workers). The 8.11-SNAPSHOT runs against C8 Run 8.11.0-alpha1. |
+| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 21 tests: Java, decision and JSON tests; external workers). The 8.11-SNAPSHOT runs against C8 Run 8.11.0-alpha1. C8 Run's default secondary storage is H2 (RDBMS exporter), unlike SaaS and typical self-managed clusters (Elasticsearch). |
 | 🔎 **source** | Derived from the CPT source (tags `8.9.28`, `8.10.9`, `8.11.0-alpha1`, `main`), the released jars or the docs. Not run. |
 | ☁️ **verified on SaaS** | Run against the INT-stage SaaS cluster above (8.11 only). |
 | ❓ **unverified** | Plausible, but not tested — mostly because no SaaS cluster / secured self-managed cluster was available. |
@@ -32,7 +32,7 @@ How to read the claims:
 5. **SaaS works for everything except the clock (☁️ 8.11).** Against a real SaaS cluster (8.11.0-alpha1, `mode: saas`, external workers on the same
    cluster, `data-deletion-mode: none`) 19 of 21 tests pass; the 2 timer tests are the exception (see limitation 10). A second run on top of the
    data of the first run passes as well (☁️): unique IDs, scoped selectors and the start-time isolation (via `GET /v2/clock`) keep the runs apart.
-   Don't use `increaseTime` on SaaS: it stalled the search index of the cluster (limitation 10).
+   Don't use `increaseTime` on SaaS: with Elasticsearch it stalled indexing of the cluster (limitation 10; reproduced locally with Elasticsearch).
 6. **With the 8.11-SNAPSHOT the whole suite, including the timer tests, ran without the management API and without a
    controllable-clock flag** (✅ local cluster, management port set to a closed port, purge off). That is the best case for a
    shared environment; SaaS itself is still ❓ unverified.
@@ -68,14 +68,14 @@ The first four columns ran on a dedicated local C8 Run (8.11-SNAPSHOT: CPT snaps
 | Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
-| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 (#23160). 8.11: ☁️ `increaseTime` works, but ❌ stalled the search index (limitation 10) |
+| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 (#23160). 8.11: ☁️ `increaseTime` works, but ❌ stalls Elasticsearch indexing for the size of the jump (limitation 10) |
 | DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 passed, ⚠️ fixed data, selectors by definition ID (see 6) |
 | Process coverage report | ✅ | ✅ | ✅ | ✅ | ❓ |
 | Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API, use `data-deletion-mode: none` (☁️ works) |
 | Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | ✅ same | needed |
 | Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ✅ works without management API (clock read via REST; no warning). ☁️ also on SaaS: the second run on leftover data passed | ⚠️ ≤ alpha1: falls back to *off* when the management API is unreachable (✅ warning) |
-| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ #62541 ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot on a local cluster. ☁️ **SaaS: ❌ the search index stalled** (limitation 10) |
+| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ #62541 ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot on a local cluster. ☁️ **SaaS / Elasticsearch: ❌ indexing stalls** (limitation 10); H2 (C8 Run): ✅ |
 | `mockJobWorker` for a type that real workers also serve | ⚠️ competes ✅ | ⚠️ | ⚠️ ✅ | ⚠️ | ⚠️ |
 | `mockChildProcess`, `mockDmnDecision` | 🔎 deploy stub resources | 🔎 | 🔎 | 🔎 | ⚠️ stubs stay on the cluster without purge |
 | Connectors | 🔎 run in the cluster's connector runtime, CPT doesn't start them | 🔎 | 🔎 | 🔎 | 🔎 same |
@@ -102,7 +102,7 @@ all versions). Deployments, instances, incidents, everything.
 ### 2. The clock is cluster-wide — ✅ verified
 `increaseTime(5 days)` made the timer of an *unrelated* process instance fire (it completed). On a shared cluster
 every process with a timer, job timeout, message TTL or backoff is affected. Only use clock manipulation on a dedicated test cluster.
-No clock manipulation on SaaS (≤ 8.10, #23160). With the public clock API (8.11) the clock stays cluster-wide: the effect on other instances is the same.
+No clock manipulation on SaaS (≤ 8.10, #23160). With the public clock API (8.11) the clock stays cluster-wide: the effect on other instances is the same. With an Elasticsearch exporter it also delays indexing (limitation 10).
 
 ### 3. Clock manipulation breaks the next test when the data is not purged (#62541) — ✅ reproduced on 8.10.9 and the 8.11.0-alpha1 jar, ✅ fixed in 8.11.0-SNAPSHOT
 Setting `data-deletion-mode: none` and calling `increaseTime`: the next test fails in `beforeTestMethod` with
@@ -119,23 +119,33 @@ the clock reset (`DELETE /actuator/clock` → 200); a purge (or restart) recover
 * Workaround (8.10, 8.11-alpha1 jar): no `increaseTime` together with `none`. Test timers on a dedicated cluster with purge,
   or make the timer duration a process variable and use short durations on the shared cluster.
 
-### 10. SaaS: `increaseTime` stalled the search index of the cluster — ☁️ observed on 8.11 (SNAPSHOT CPT, 8.11.0-alpha1 cluster)
-The suite with the timer tests enabled (`demo.clock-manipulation.enabled=true`, `clock-reset-enabled: true`): the first test that ran was the JSON
-timer test (`INCREASE_TIME` `P5D`) — it passed, and CPT reset the clock afterwards (`GET /v2/clock` showed the real time again). **All 20 following tests failed**
-with "No process instance / user task / decision instance … found". The engine kept working (a probe instance was processed by the external workers), the
-cluster topology stayed `healthy`, but **the search API (`POST /v2/process-instances/search`, `/v2/decision-instances/search`) returned nothing newer than the
-timer test's instance**: no new data was indexed. This resembles #62541 (a clock jump leaves the cluster in a bad state), but on SaaS there is no
-purge/restart to recover from — **the index had not recovered 21 minutes later** (checked until 12:09Z; the clock and the topology were normal, the search still returned the 17 instances up to
-  the timer test, although the cluster had processed ~30 more instances and one probe instance). Nothing was tried on the SaaS side (no purge available);
-  recovering the search probably needs a restart/recreation of the cluster by its owner. ❓ Whether it recovers by itself (for example when the real time passes
-  the 5 days of the jump) is not known.
-* Not reproduced locally (C8 Run 8.11.0-alpha1 with the same snapshot: 21/21, also with `none`). **The secondary storage differs:** C8 Run is
-  configured with `secondary-storage.type: rdbms` on a file-based H2 database (✅ `configuration/application.yaml` of C8 Run 8.11.0-alpha1), while SaaS
-  presumably uses Elasticsearch with its exporter (❓ not confirmed). **Working hypothesis:** the Elasticsearch exporter/indices don't cope with the +5 days jump
-  and the jump back (for example time-based indices or archiving, or an exporter that stalls on timestamps going backwards). ❓ Not verified: reproducing it with
-  a local C8 Run on Elasticsearch would confirm or rule out the storage as the cause. Root cause unknown; a candidate for an issue.
-* Conclusion: **do not manipulate the clock on a SaaS (or any shared) cluster.** Test timers there with short, configurable timer durations instead. The
-  `saas` profile keeps the timer tests off.
+### 10. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
+**Symptom.** With the timer tests enabled (`increaseTime(5 days)`, then CPT resets the clock), every following test fails with "No process instance / user task /
+decision instance … found". The engine keeps working (external workers process new instances, the topology is `healthy`), but the **search index receives
+nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newer than the timer test's instance was indexed for 21+ minutes (checked until 12:09Z).
+
+**Cause: the secondary storage / exporter, not CPT.** Confirmed by a reproduction (the hint that SaaS uses Elasticsearch, unlike C8 Run's H2, was right):
+
+| Setup (local, C8 Run 8.11.0-alpha1, snapshot CPT) | Result |
+| --- | --- |
+| Default: H2 database + RDBMS exporter | ✅ 21/21 with `none` and timer tests; index delay after a +120 s jump and reset: **1.0 s** (no delay) |
+| Elasticsearch 8.19.14 + Elasticsearch exporter, no timer tests (control) | ✅ 19 passed, 2 skipped |
+| Elasticsearch, timer tests on (same suite as on SaaS) | ❌ the timer test passes, **the 20 other tests fail**; ES holds only the instances up to the timer test, no exporter errors in the log, exporter `ENABLED` |
+| Elasticsearch, +120 s jump, then reset | indexing normal while jumped (1.0 s); **an instance created right after the reset appeared in the index after 121.4 s** — the size of the jump |
+| Elasticsearch, 600 more instances after the stall | ✅ the index caught up (523 of 600 visible) — the **batch-size flush still works**, the **time-based flush does not** |
+
+**Interpretation (❓ not verified in the exporter source).** The exporter flushes its batch on a timer that runs on the broker's clock. A jump forward moves the next
+flush into the future; after the reset the clock goes back, and the next flush is due only when real time reaches the jumped time. Small batches (a test suite)
+stay unflushed until then. With a +5 day jump that means **up to 5 days**. For the SaaS cluster used here the index would then recover around **2026-11-15 11:48Z**,
+or earlier after a restart (❓ not tried; no purge on SaaS).
+
+**Consequences**
+* **Do not manipulate the clock on any cluster with an Elasticsearch/OpenSearch exporter that you cannot restart quickly: SaaS and probably every self-managed
+  Kubernetes/OpenShift cluster** (their default storage is Elasticsearch/OpenSearch). This probably holds for the old management API on 8.10/8.9 as well
+  (❓ not tried; the mechanism is in the exporter). The `saas` profile keeps the timer tests off.
+* The same mechanism may be part of why #62541 showed an unhealthy partition (❓).
+* If a clock test must run on such a cluster: keep the jump small (the delay equals the jump) and make the timer durations in the test configurable.
+* Candidate for an issue: the exporter's flush timer should not depend on the (manipulated) clock, or the clock reset should reschedule it.
 
 ### 4. Job workers: stale REST long-polling with `data-deletion-mode: none` (#62521, open) — ❓ not reproduced
 Workers that run **in the test JVM** (Spring Boot default `@JobWorker`s, CPT mocks) keep their long-poll request across tests and can
@@ -204,7 +214,7 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 
 * **8.11.0-alpha1 jar:** works like 8.10 (the CPT remote runtime classes are identical in `8.10.9` and `8.11.0-alpha1`), including #62541.
 * **Public clock API (snapshot, PR #66862).** The runtime of 8.11.0-alpha1 already has `GET /v2/clock`, `POST /v2/clock/add` and
-  `POST /v2/clock/reset` (✅ `GET` and `reset` work *without* the controllable-clock flag). The CPT snapshot uses them through the
+  `POST /v2/clock/reset` (✅ `GET`, `add` (`{"offset":"PT120S"}`, an ISO duration) and `reset` work *without* the controllable-clock flag). The CPT snapshot uses them through the
   Camunda client (`CamundaClockClientImpl`). Verified consequences (✅ local C8 Run 8.11.0-alpha1):
   * no `zeebe.clock.controlled` / `CAMUNDA_SYSTEM_CLOCKCONTROLLED` flag needed (the legacy endpoint stayed `403`, timer tests passed),
   * #62541 is fixed (`increaseTime` + `data-deletion-mode: none`),
@@ -248,7 +258,8 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 6. Scope assertions/utilities/mocks to the process instances created by the test (limitations 5, 6) so shared-cluster tests are safe by default.
 
 **Validation still open**
-7. Report/analyze limitation 10 (clock manipulation on SaaS stalls the search index) with the SaaS team; until then the timer tests stay off on SaaS.
+7. Report limitation 10 (the Elasticsearch exporter's time-based flush is delayed by a clock jump) as an issue with the reproduction above; until then the timer tests stay off on SaaS and on shared Elasticsearch clusters.
+   Run clock tests on Elasticsearch in CI too, not only on C8 Run with H2.
    Run the demo against an OpenShift cluster with
    authentication: management API access, `authorizations`, outbound connector runtime, GitLab CI job.
 8. Try parallel test execution with the remote runtime.
