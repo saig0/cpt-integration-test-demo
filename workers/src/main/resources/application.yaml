@@ -6,11 +6,11 @@ spring:
   main:
     web-application-type: none
 
+# No client addresses on purpose: the defaults of the self-managed mode (REST http://localhost:8080, gRPC
+# http://localhost:26500) are the local C8 Run. Explicit addresses here would also apply to the "saas" profile.
 camunda:
   client:
     mode: self-managed
-    rest-address: http://127.0.0.1:8080
-    grpc-address: http://127.0.0.1:26500
 
 logging:
   level:

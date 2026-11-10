@@ -12,9 +12,9 @@ camunda:
       connectors-rest-api-address: http://127.0.0.1:8086
       runtime-connection-timeout: PT1M
   client:
+    # No client addresses on purpose: the defaults of the self-managed mode (REST http://localhost:8080, gRPC
+    # http://localhost:26500) are the local C8 Run. Explicit addresses here would also apply to the "saas" profile.
     mode: self-managed
-    rest-address: http://127.0.0.1:8080
-    grpc-address: http://127.0.0.1:26500
     # Job workers run in a separate application
     worker:
       defaults:

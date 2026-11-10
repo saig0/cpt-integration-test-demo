@@ -9,3 +9,5 @@ camunda:
     cloud:
       cluster-id: ${CAMUNDA_CLUSTER_ID}
       region: ${CAMUNDA_CLUSTER_REGION}
+      # Production SaaS: camunda.io. Another stage, e.g. INT: ultrawombat.com (the token URL, audience and addresses follow).
+      domain: ${CAMUNDA_CLUSTER_DOMAIN:camunda.io}
