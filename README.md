@@ -115,7 +115,7 @@ Stop the cluster with `c8ctl cluster stop`.
 
 ## Run on Camunda 8 SaaS
 
-SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore skips the timer test
+SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore skips the timer tests (Java and JSON)
 and increases the assertion timeout. CPT 8.9 can't turn off the data deletion and the clock reset (8.10+ can): it logs
 `Failed to delete the runtime data, skipping` after each test. See [limitations](docs/CAPABILITIES.md#limitations-and-blockers).
 
