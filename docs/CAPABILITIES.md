@@ -1,0 +1,199 @@
+# Running CPT tests on a remote environment — capabilities, limitations, version differences
+
+Input for [camunda/camunda#64034](https://github.com/camunda/camunda/issues/64034). State: **2026-11-10**.
+Versions: CPT / C8 Run **8.9.28**, **8.10.9**, **8.11.0-alpha1** (all three verified with this demo).
+
+How to read the claims:
+
+| Mark | Meaning |
+| --- | --- |
+| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 4 tests, external workers). |
+| 🔎 **source** | Derived from the CPT source (tags `8.9.28`, `8.10.9`, `8.11.0-alpha1`, `main`), the released jars or the docs. Not run. |
+| ❓ **unverified** | Plausible, but not tested — mostly because no SaaS cluster / secured self-managed cluster was available. |
+
+## TL;DR
+
+1. **It works.** CPT with `runtime-mode: remote` runs the invoice tests against a running cluster with the job workers in a
+   separate application — on 8.9.28, 8.10.9 and 8.11.0-alpha1 (✅). No Docker needed.
+2. **The blocker for a shared QA environment is the cleanup, not the connection.** By default CPT wipes the *whole cluster*
+   after every test (`POST /actuator/cluster/purge`) and manipulates the *cluster-wide* clock. Both are fine on a dedicated
+   C8 Run, and destructive on a cluster used for manual/acceptance testing.
+3. **8.10+ can switch the cleanup off** (`data-deletion-mode: none`, `clock-reset-enabled: false`). **8.9 cannot** — the
+   customer's 8.9 environment needs an upgrade, a backport, or a dedicated test cluster.
+4. **Clock manipulation and "no purge" don't mix yet** on 8.10 and 8.11.0-alpha1: after `increaseTime`, the next test fails
+   with `Cluster is unhealthy` (#62541, ✅ reproduced). The public clock API (#23160, CPT PR #66862, merged to `main` on
+   2026-10-28) is the fix, but it is **not in the 8.11.0-alpha1 CPT jar** (✅ the jar still calls `/actuator/clock`).
+5. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
+6. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
+   unless told otherwise.
+
+## What a remote run needs
+
+| Requirement | 8.9.28 | 8.10.9 | 8.11.0-alpha1 | Notes |
+| --- | --- | --- | --- | --- |
+| `camunda.process-test.runtime-mode: remote` | ✅ | ✅ | ✅ | |
+| Runtime version ≥ CPT version | ✅ | ✅ | ✅ | Docs: "CPT doesn't support older Camunda runtimes". The demo pins both to the same version. |
+| Client address/credentials: `camunda.client.*` | ✅ | ✅ | ✅ | 8.9.0 used `camunda.process-test.remote.client.*`, deprecated since 8.9.1. |
+| Management API (port 9600) reachable | ✅ needed | ✅ needed¹ | ✅ needed¹ | Purge (all versions) and the clock (≤ alpha1). |
+| Cluster clock controllable (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` or `ZEEBE_CLOCK_CONTROLLED=true`) | ✅ needed | ✅ needed | ✅ needed | Only for `increaseTime`/`setTime`. Verified: without it `DELETE /actuator/clock` returns `403 … the clock is immutable`; both variable names work on all three versions. 8.11 (`main`) no longer needs the flag, see below. |
+| Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | 🔎 from 8.11 final | Needed once CPT uses the public clock API. Only relevant when authorizations are enabled. |
+| Job workers in a separate app | ✅ | ✅ | ✅ | `camunda.client.worker.defaults.enabled=false` in the tests. |
+
+¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
+warning at every test start and disables the start-time isolation (✅ see limitation 6).
+
+## Capability matrix
+
+C8 Run = dedicated local cluster. Shared/SaaS = a cluster that must not be wiped. SaaS columns are 🔎/❓ only.
+
+| Capability | C8 Run 8.9 | C8 Run 8.10 | C8 Run 8.11-alpha1 | Shared / SaaS |
+| --- | --- | --- | --- | --- |
+| Deploy BPMN (`@Deployment`), start instances | ✅ | ✅ | ✅ | ❓ expected to work |
+| Process-instance and user-task assertions | ✅ | ✅ | ✅ | ❓ needs a longer `assertion.timeout` |
+| Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ❓ |
+| External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ❓ |
+| BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ❓ |
+| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ❌ no clock on SaaS ≤ 8.10 (#23160); 8.11 final: ❓ via public clock API |
+| Process coverage report | ✅ | ✅ | ✅ | ❓ |
+| Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API |
+| Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | needed |
+| Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ⚠️ falls back to *off* when the clock can't be read (✅ warning) |
+| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ #62541 ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed on `main` (🔎 public clock API) |
+| `mockJobWorker` for a type that real workers also serve | ⚠️ competes ✅ | ⚠️ | ⚠️ ✅ (8.11) | ⚠️ |
+| `mockChildProcess`, `mockDmnDecision` | 🔎 deploy stub resources | 🔎 | 🔎 | ⚠️ stubs stay on the cluster without purge |
+| Connectors | 🔎 run in the cluster's connector runtime, CPT doesn't start them | 🔎 | 🔎 | 🔎 same |
+| Secrets for connectors | 🔎 cluster owns them | 🔎 `cluster-secrets` ignored + warning | 🔎 same | 🔎 same |
+| Multi-tenancy toggle of CPT | 🔎 ignored + warning (remote) | 🔎 | 🔎 | 🔎 |
+| Authenticated cluster (Basic, OIDC) | ❓ via `camunda.client.auth.*` (docs) | ❓ | ❓ | ❓ |
+| JSON test cases (`.test.json`) | ❓ not tried | ❓ | ❓ | ❓ |
+
+## Limitations and blockers
+
+Ordered by impact for the issue's scenario (shared QA cluster on self-managed Kubernetes/OpenShift, GitLab CI, 8.9 → 8.11,
+custom connectors).
+
+### 1. CPT deletes all data of the cluster after each test — ✅ verified
+A process instance started by someone else before the test run was gone afterwards (`POST /actuator/cluster/purge`,
+all versions). Deployments, instances, incidents, everything.
+
+* 8.9: **no way to switch it off.** If the management API is unreachable, CPT only logs `Failed to delete the runtime data,
+  skipping` and carries on (✅), so a "no purge" run is possible by accident (point the address to a closed port, as the 8.9
+  `saas` profile does) but it's not a feature.
+* 8.10+: `camunda.process-test.data-deletion-mode: none`.
+* Danger: the default monitoring address is `http://localhost:9600`. A mis-configured run can purge an unrelated local cluster.
+* Next step: use a dedicated cluster for CPT, or run with `none` plus the isolation rules below.
+
+### 2. The clock is cluster-wide — ✅ verified
+`increaseTime(5 days)` made the timer of an *unrelated* process instance fire (it completed). On a shared cluster
+every process with a timer, job timeout, message TTL or backoff is affected. Only use clock manipulation on a dedicated test cluster.
+No clock manipulation on SaaS (≤ 8.10, #23160).
+
+### 3. Clock manipulation breaks the next test when the data is not purged (#62541) — ✅ reproduced on 8.10.9 and 8.11.0-alpha1
+Setting `data-deletion-mode: none` and calling `increaseTime`: the next test fails in `beforeTestMethod` with
+`Cluster is unhealthy … health=UNHEALTHY` (`actor appears blocked … valueType=JOB_BATCH`). The cluster stays `DOWN` even after
+the clock reset (`DELETE /actuator/clock` → 200); a purge (or restart) recovers it (✅).
+
+* Issue status: closed 2026-11-09. "Mitigated in 8.11 by switching to the new public clock API; won't be fixed in 8.10."
+* The issue comment says it doesn't occur with 8.11.0-alpha1. **We could reproduce it with the 8.11.0-alpha1 CPT jar
+  against C8 Run 8.11.0-alpha1** — that jar still uses `/actuator/clock`; PR #66862 (public clock API in CPT) was
+  merged on 2026-10-28, one day after `8.11.0-alpha1-rc2` was cut (2026-10-27) and before the 2026-11-02 alpha1 release. Expect it fixed in the next 8.11 build. Re-check then.
+* Workaround (8.10, 8.11-alpha1): no `increaseTime` together with `none`. Test timers on a dedicated cluster with purge,
+  or make the timer duration a process variable and use short durations on the shared cluster.
+
+### 4. Job workers: stale REST long-polling with `data-deletion-mode: none` (#62521, open) — ❓ not reproduced
+Workers that run **in the test JVM** (Spring Boot default `@JobWorker`s, CPT mocks) keep their long-poll request across tests and can
+take jobs that belong to the next test. Workaround: `camunda.client.zeebe.prefer-rest-over-grpc=false`. **This demo is
+not affected by design**: the workers are external and never see a test boundary. It *is* a reason to keep workers
+out of the test JVM.
+
+### 5. CPT mocks and real workers compete for jobs — ✅ verified (8.11.0-alpha1)
+`processTestContext.mockJobWorker("add-invoice-to-accounting")` while the external worker was running: 5 of 10 jobs went
+to the mock, 5 to the real worker. On a remote environment with real workers/connectors, a job type is served either by the
+real worker **or** by a mock — not both.
+
+* Replacing the HTTP connector by a worker (this demo) removes the need for the `mockJobWorker("io.camunda:http-json:1")` of the original
+  example. If you do want to mock the connector on a shared cluster, you must stop the connector runtime for that
+  job type (impossible on SaaS), or add a test-specific BPMN variant.
+* Idea for a feature: scope a mock to the process instances of the test (job filter by instance key / tag).
+
+### 6. Selectors are cluster-wide; test isolation needs scoping — ✅ verified
+Without purge, `assertThatUserTask(byElementId("UserTask_ApproveInvoice"))` matched a task from an earlier test
+(*"Expected … to be created, but was completed"*, 8.9.28) — and `completeUserTask(byElementId(…))` could complete
+a stranger's task. Rules for a shared cluster, all implemented in this demo:
+
+* unique business data per test (invoice ID), *and*
+* selectors scoped to the process instance: `byElementId("…", processInstanceKey)`, `assertThatProcessInstance(instance)`.
+
+8.10+ additionally limits the queries to data created after the test case started (🔎 `testCaseStartTime`; absent
+in the 8.9.28 jar). That scoping reads the cluster time from the management API; if it can't, CPT logs
+*"Test case isolation by start time will be disabled for this test case"* (✅) and you depend on the rules above.
+
+### 7. Management API (9600) must be reachable for purge and (≤ alpha1) clock — 🔎/❓
+On Kubernetes/OpenShift that's the Camunda pod's management port: a Service/Route or `kubectl port-forward`. It is
+unauthenticated on C8 Run; on a secured cluster the actuator endpoints may need other protection — ❓ **to verify on the
+target environment**. With `none` + `clock-reset-enabled: false` + no `increaseTime`, the connection is not needed
+(✅ simulated with a closed port on 8.10.9 and 8.11.0-alpha1).
+
+### 8. Eventual consistency — 🔎
+Assertions query the secondary storage, which is filled asynchronously. They retry until `camunda.process-test.assertion.timeout`
+(default 10 s). Remote/SaaS needs more (the `saas` profile uses 30 s).
+
+### 9. Smaller points
+* **8.9 dependency conflict** (✅): with the Spring Boot 4.0 BOM, the 8.9.28 client fails with
+  `NoSuchMethodError: HttpAsyncClientBuilder.disableContentCompression()`; pin `httpclient5` 5.6.5 and `httpcore5(-h2)` 5.4.4
+  in `dependencyManagement` (the `8.9` branch does; a property override of an imported BOM doesn't work).
+* Workers log `500 Internal Server Error` while activating jobs during the purge, then recover (✅, harmless).
+* The `-parameters` compiler flag is needed for `@Variable` without a name when you don't use the Spring Boot parent (✅).
+* 8.11.0-alpha1 is an alpha. The version of this demo's `main` will move.
+* The example project has no DMN resource; DMN is not covered. `mockDmnDecision` deploys a stub DMN (🔎).
+* Secrets: CPT's `connectors-secrets` / `cluster-secrets` are ignored for remote runtimes (🔎, warning since 8.10).
+* Not verified: SaaS, authenticated clusters, OpenShift, parallel test execution, JSON test cases, the 8.11 final CPT.
+
+## Version differences
+
+### 8.11 (`main`, 8.11.0-alpha1 verified)
+
+* Works like 8.10 (CPT remote runtime classes are identical in `8.10.9` and `8.11.0-alpha1`).
+* **Public clock API.** The runtime of 8.11.0-alpha1 already has `GET /v2/clock`, `POST /v2/clock/add` and
+  `POST /v2/clock/reset` (✅ `GET` and `reset` work *without* the controllable-clock flag; `add` exists, the payload was not
+  verified). CPT switches to them in `main` (🔎 PR #66862: `CamundaClockClientImpl` uses the Camunda client). Consequences, per the
+  8.11 docs: no `zeebe.clock.controlled` flag needed; with authorizations enabled the CPT user needs `READ` + `UPDATE` on
+  `SYSTEM`; #62541 is mitigated. **Not in the 8.11.0-alpha1 CPT jar** (✅).
+* Purge is unchanged (`POST /actuator/cluster/purge`, management API). Remaining SaaS blocker: purge → use `data-deletion-mode: none`.
+* New in the docs vs 8.10: utilities to complete user tasks with dynamic variables / a variables table (🔎).
+
+### 8.10 (`8.10` branch, 8.10.9 verified)
+
+* New vs 8.9: `data-deletion-mode` (`CLUSTER_PURGE` | `NONE`), `clock-reset-enabled`, `query-page-limit`, test-case start-time
+  isolation, `cluster-secrets` (8.10.6+; ignored with a warning in remote mode), semantic similarity, update-variables utilities.
+* Clock: management API (`/actuator/clock`), needs the controllable-clock flag.
+* Known issues: #62541 (✅ reproduced, won't fix in 8.10), #62521 (open).
+
+### 8.9 (`8.9` branch, 8.9.28 verified)
+
+* Remote runtime supported; clock via management API (flag needed); **purge cannot be switched off**; no start-time isolation (✅ tests
+  fail on a dirty cluster without scoped selectors); no `data-deletion-mode`, `clock-reset-enabled`.
+* Connectors REST address default `8086` and the `camunda.client.*` client properties since 8.9.1.
+* Spring Boot 4.0.x and the `httpclient5` pin (see above).
+
+## Next steps (proposal for #64034)
+
+**Docs** (the issue's technical requirements)
+1. Add a page "Integration tests on a remote / shared environment" to the CPT docs (remote runtime section): dedicated cluster
+   requirement, what the cleanup deletes, clock effects, scoping rules (limitations 1, 2, 6), external workers vs. mocks (5),
+   SaaS configuration. Use this repo as the worked example.
+2. Align the [Process OS CPT guide](https://github.com/camunda/process-os/blob/main/shared/references/camunda-testing-guide.md#integration-tests--camunda-saas):
+   it shows SaaS only with `mode: saas`; it should add `data-deletion-mode: none` / `clock-reset-enabled: false` (8.10+), the
+   missing 8.9 option, and the scoping rules.
+
+**Product** (decide, then open issues)
+3. 8.9 customers: backport `data-deletion-mode` and `clock-reset-enabled` to 8.9.x, or recommend 8.10+ / a dedicated test cluster.
+4. Re-run the "clock + `none`" scenario (limitation 3) on the first 8.11 build with PR #66862, and decide whether to fix it for 8.10.
+5. Make a purge of a *remote* cluster explicit (e.g. warn, or require an opt-in) — today it is the default and the docs say
+   only "keep in mind".
+6. Scope assertions/utilities/mocks to the process instances created by the test (limitations 5, 6) so shared-cluster tests are safe by default.
+
+**Validation still open**
+7. Run this demo against a real SaaS cluster (credentials needed; the `saas` profile is untested) and against an OpenShift cluster with
+   authentication: management API access, `authorizations`, outbound connector runtime, GitLab CI job.
+8. Try JSON test cases and parallel execution with the remote runtime.
