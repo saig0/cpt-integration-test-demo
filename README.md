@@ -122,11 +122,12 @@ Stop the cluster with `c8ctl cluster stop`.
 
 SaaS has no management API (port 9600), so CPT can't purge the cluster. The `saas` profile therefore turns off the data
 deletion (`data-deletion-mode: none`), increases the assertion timeout and skips the timer tests (Java and JSON). With the
-snapshot CPT, the whole suite including the timer tests ran against a local cluster without the management API; whether the public
-clock API is available on SaaS is not verified. To try it, set `demo.clock-manipulation.enabled: true` (and `clock-reset-enabled: true`).
+snapshot CPT, the whole suite including the timer tests ran against a local cluster without the management API. On SaaS, the timer
+tests did run, but moving the clock stalled the search index of the cluster (see below), so they stay off.
 
-1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate`.
-2. `cp .env.example .env`, fill in the values, and load them: `set -a; . .env; set +a`
+1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate` (or `Orchestration`).
+2. `cp .env.example .env`, fill in the values (the file is gitignored), and load them: `set -a; . .env; set +a`. For a stage other than production set
+   `CAMUNDA_CLUSTER_DOMAIN` (for example `ultrawombat.com` for INT). The credentials file of the console (`export …`) works as well: `set -a; . <file>; set +a`.
 3. Start the workers against SaaS (they stay running):
 
    ```bash
@@ -139,8 +140,9 @@ clock API is available on SaaS is not verified. To try it, set `demo.clock-manip
    mvn -pl process-tests test -Psaas
    ```
 
-> Status: the SaaS profile is **written but not verified** — no SaaS cluster was available when this demo was
-> built. Treat it as a starting point. See [docs/CAPABILITIES.md](docs/CAPABILITIES.md) for what to expect.
+> Status: verified on 8.11 only — against a cluster on the Camunda INT stage (`CAMUNDA_CLUSTER_DOMAIN=ultrawombat.com`, 8.11.0-alpha1) with the
+> snapshot CPT: 19 of 21 tests pass (the 2 timer tests are skipped), also a second run on top of the data of the first. **Don't enable the timer tests on
+> SaaS**: `increaseTime` stalled the search index of the cluster. See limitation 10 in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 
 ## Configuration reference
 
