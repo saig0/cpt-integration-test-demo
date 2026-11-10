@@ -1,0 +1,31 @@
+# Default: run the tests against a local Camunda 8 Run (started with `c8ctl cluster start`).
+# Use the "saas" profile (mvn test -Psaas) to run the tests against Camunda 8 SaaS.
+camunda:
+  process-test:
+    # Don't start a runtime with Testcontainers. Connect to the running cluster instead.
+    runtime-mode: remote
+    remote:
+      # The management API of the cluster. CPT uses it to delete the data between the tests and
+      # (until the public clock API is used) to manipulate the clock.
+      camunda-monitoring-api-address: http://127.0.0.1:9600
+      # Only needed to test with Connectors (the tests of this demo don't use them)
+      connectors-rest-api-address: http://127.0.0.1:8086
+      runtime-connection-timeout: PT1M
+  client:
+    mode: self-managed
+    rest-address: http://127.0.0.1:8080
+    grpc-address: http://127.0.0.1:26500
+    # Job workers run in a separate application
+    worker:
+      defaults:
+        enabled: false
+
+demo:
+  clock-manipulation:
+    enabled: true
+
+logging:
+  level:
+    root: info
+    io.camunda.process.test: info
+    org.testcontainers: warn

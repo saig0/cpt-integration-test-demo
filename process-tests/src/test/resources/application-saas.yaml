@@ -1,0 +1,28 @@
+# Run the tests against Camunda 8 SaaS: mvn test -Psaas (credentials from environment variables,
+# see .env.example). Create an API client with the scopes "Zeebe", "Tasklist" and "Operate" (8.9: "Zeebe")
+# in the Camunda SaaS console.
+camunda:
+  process-test:
+    runtime-mode: remote
+    # SaaS doesn't expose the management API (port 9600) that CPT uses to purge the cluster.
+    # Don't delete the data between the tests (requires CPT 8.10+). The tests are isolated by using
+    # unique invoice IDs instead.
+    data-deletion-mode: none
+    # Don't reset the clock after each test: SaaS has no controllable clock.
+    clock-reset-enabled: false
+    assertion:
+      # The data is exported asynchronously. Give the assertions more time than the default (10s).
+      timeout: PT30S
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID}
+      client-secret: ${CAMUNDA_CLIENT_SECRET}
+    cloud:
+      cluster-id: ${CAMUNDA_CLUSTER_ID}
+      region: ${CAMUNDA_CLUSTER_REGION}
+
+demo:
+  # SaaS doesn't allow to manipulate the clock.
+  clock-manipulation:
+    enabled: false

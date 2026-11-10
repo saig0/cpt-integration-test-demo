@@ -1,0 +1,18 @@
+# The job workers connect to a local Camunda 8 Run by default (see README).
+# Use the "saas" profile to connect to Camunda 8 SaaS: SPRING_PROFILES_ACTIVE=saas
+spring:
+  application:
+    name: invoice-workers
+  main:
+    web-application-type: none
+
+camunda:
+  client:
+    mode: self-managed
+    rest-address: http://127.0.0.1:8080
+    grpc-address: http://127.0.0.1:26500
+
+logging:
+  level:
+    root: info
+    io.camunda.demo: info

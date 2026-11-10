@@ -1,0 +1,11 @@
+# Connect the job workers to Camunda 8 SaaS. Provide the credentials as environment variables
+# (see .env.example). Create an API client with the scope "Zeebe" in the Camunda SaaS console.
+camunda:
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID}
+      client-secret: ${CAMUNDA_CLIENT_SECRET}
+    cloud:
+      cluster-id: ${CAMUNDA_CLUSTER_ID}
+      region: ${CAMUNDA_CLUSTER_REGION}
