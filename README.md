@@ -8,7 +8,8 @@ tests against an **already running Camunda 8 cluster** (local C8 Run by default,
 alternative), while the **job workers run as separate applications** — like the external services and custom
 connectors of a real system.
 
-> **Branch `main` — Camunda `8.11.0-alpha1`.** Variations for the other versions live in the branches
+> **Branch `main` — C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`.** The snapshot contains the public clock API, which was merged
+> after the 8.11.0-alpha1 release. It is a moving target until the next alpha is released (`cpt.version` in the root `pom.xml`). Variations for the other versions live in the branches
 > [`8.10`](../../tree/8.10) and [`8.9`](../../tree/8.9). What works in which version, the limitations and the
 > recommended next steps are collected in **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
@@ -18,7 +19,7 @@ connectors of a real system.
 .
 ├── workers/          Spring Boot app with the job workers (the "external services"). Started independently.
 ├── process-tests/    CPT tests (Java + JSON), the BPMN and the DMN. Connects to a remote cluster. No job workers inside.
-├── scripts/          start-c8run.sh: start C8 Run with a controllable clock
+├── scripts/          start-c8run.sh: start C8 Run (with a controllable clock for CPT ≤ 8.10)
 ├── docs/             Capabilities, limitations and version differences
 └── .env.example      SaaS credentials template
 ```
@@ -72,8 +73,11 @@ Tests in `process-tests/src/test`:
 * **Test isolation.** On C8 Run, CPT deletes **all** data of the cluster after each test (`POST /actuator/cluster/purge`
   on the management API). On a cluster where that is not possible (SaaS), the tests are isolated by a unique invoice ID
   and by assertions that are scoped to the started process instance.
-* **Clock.** `increaseTime(Duration.ofDays(5))` (timer test) needs a cluster with a controllable clock. That is
-  why `scripts/start-c8run.sh` enables it. The test is skipped for SaaS (`demo.clock-manipulation.enabled=false`).
+* **Clock.** `increaseTime(Duration.ofDays(5))` (timer tests) uses the public clock API of the cluster (`/v2/clock`) with CPT 8.11.
+  CPT ≤ 8.10 (and the 8.11.0-alpha1 jar) use the management API and need a cluster with a controllable clock instead. The timer
+  tests are skipped for SaaS (`demo.clock-manipulation.enabled=false`), because it is not verified there.
+* **Versions.** The tests use the Camunda client and CPT of `cpt.version` (`8.11.0-SNAPSHOT`, resolved from
+  `https://artifacts.camunda.com/artifactory/public`). C8 Run and the workers use `camunda.version` (`8.11.0-alpha1`).
 
 ## Prerequisites
 
@@ -83,14 +87,15 @@ Tests in `process-tests/src/test`:
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster** with a controllable clock. The script starts the version of `camunda.version` (`8.11.0-alpha1` on this branch). `c8ctl` downloads it if needed.
+**1. Start the cluster.** The script starts the version of `camunda.version` (`8.11.0-alpha1` on this branch). `c8ctl` downloads it if needed.
 
 ```bash
 scripts/start-c8run.sh
 ```
 
-The script starts C8 Run and verifies that the clock is controllable. Without that, only the timer test fails.
-Equivalent manual start: `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start 8.11.0-alpha1`.
+The script also makes the clock controllable (and verifies it). With the CPT snapshot that is **not needed** — a plain
+`c8ctl cluster start 8.11.0-alpha1` works. It is needed with the 8.11.0-alpha1 CPT jar and on the `8.10`/`8.9` branches
+(`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start <version>`).
 
 **2. Start the job workers** in a second terminal. They keep running across test runs.
 
@@ -104,7 +109,7 @@ mvn -pl workers spring-boot:run
 mvn -pl process-tests test
 ```
 
-All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timeout tests need the controllable clock.
+All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timer tests move the cluster clock.
 A coverage report is written to `process-tests/target/coverage-report/report.html`.
 
 Stop the cluster with `c8ctl cluster stop`.
@@ -115,8 +120,10 @@ Stop the cluster with `c8ctl cluster stop`.
 
 ## Run on Camunda 8 SaaS
 
-SaaS has no management API (port 9600) and no controllable clock. The `saas` profile therefore turns off the data
-deletion and the clock reset, increases the assertion timeout and skips the timer test.
+SaaS has no management API (port 9600), so CPT can't purge the cluster. The `saas` profile therefore turns off the data
+deletion (`data-deletion-mode: none`), increases the assertion timeout and skips the timer tests (Java and JSON). With the
+snapshot CPT, the whole suite including the timer tests ran against a local cluster without the management API; whether the public
+clock API is available on SaaS is not verified. To try it, set `demo.clock-manipulation.enabled: true` (and `clock-reset-enabled: true`).
 
 1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate`.
 2. `cp .env.example .env`, fill in the values, and load them: `set -a; . .env; set +a`
@@ -152,7 +159,7 @@ Any property can be overridden on the command line, for example
 | Symptom | Cause / fix |
 | --- | --- |
 | `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
-| Timer test fails: *clock is immutable* / 403 | The cluster was started without a controllable clock. Use `scripts/start-c8run.sh`. |
-| `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` (#62541). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
+| Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT jar or the `8.10`/`8.9` branches: the cluster was started without a controllable clock. Use `scripts/start-c8run.sh`. |
+| `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1 jar (#62541, fixed in the snapshot). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
 | Assertions time out waiting for a step | The workers are not running (or run against another cluster). Check the worker log. |
 | Worker log shows `500 Internal Server Error` while activating jobs | Harmless: it happens while CPT purges the cluster. The workers recover. |

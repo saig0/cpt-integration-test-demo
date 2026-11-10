@@ -8,7 +8,8 @@ camunda:
     # Don't delete the data between the tests (requires CPT 8.10+). The tests are isolated by using
     # unique invoice IDs instead.
     data-deletion-mode: none
-    # Don't reset the clock after each test: SaaS has no controllable clock.
+    # Don't reset the clock after each test: the timer tests are skipped below. To try the public clock API on
+    # SaaS (CPT 8.11), set this to true and demo.clock-manipulation.enabled to true. Not verified.
     clock-reset-enabled: false
     assertion:
       # The data is exported asynchronously. Give the assertions more time than the default (10s).
@@ -23,6 +24,6 @@ camunda:
       region: ${CAMUNDA_CLUSTER_REGION}
 
 demo:
-  # SaaS doesn't allow to manipulate the clock.
+  # SaaS (<= 8.10) doesn't allow to manipulate the clock. With CPT 8.11 the public clock API is used: not verified on SaaS.
   clock-manipulation:
     enabled: false
