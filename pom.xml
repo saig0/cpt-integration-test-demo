@@ -21,8 +21,11 @@
   </modules>
 
   <properties>
-    <!-- The Camunda version of this branch. The client, the Spring SDK and CPT use the same version. -->
+    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh) and the job workers. -->
     <camunda.version>8.11.0-alpha1</camunda.version>
+    <!-- The version of the Camunda client and CPT used by the tests (process-tests). It is a snapshot until the next
+         8.11 alpha is released: the 8.11.0-alpha1 CPT doesn't use the public clock API yet (merged after the release). -->
+    <cpt.version>8.11.0-SNAPSHOT</cpt.version>
     <!-- Spring Boot version that is compatible with the Camunda version above (Camunda 8.9: 4.0.x). -->
     <spring-boot.version>4.1.2</spring-boot.version>
 
