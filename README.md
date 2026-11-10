@@ -74,14 +74,14 @@ service task with the job type `send-invoice-rejection`, handled by a job worker
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster** with a controllable clock. `c8ctl` downloads the version on the first start.
+**1. Start the cluster** with a controllable clock. The script starts the version of `camunda.version` (`8.11.0-alpha1` on this branch). `c8ctl` downloads it if needed.
 
 ```bash
-scripts/start-c8run.sh 8.11
+scripts/start-c8run.sh
 ```
 
 The script starts C8 Run and verifies that the clock is controllable. Without that, only the timer test fails.
-Equivalent manual start: `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start 8.11`.
+Equivalent manual start: `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start 8.11.0-alpha1`.
 
 **2. Start the job workers** in a second terminal. They keep running across test runs.
 

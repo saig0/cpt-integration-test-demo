@@ -3,12 +3,12 @@
 #   * the cluster clock is controllable (needed by processTestContext.increaseTime(...))
 #   * the management API (9600) is reachable (CPT uses it to delete the data between the tests)
 #
-# Usage: scripts/start-c8run.sh [version]   (default: the major.minor of camunda.version in pom.xml)
+# Usage: scripts/start-c8run.sh [version]   (default: camunda.version of pom.xml, to match the CPT version)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-$(sed -n 's#.*<camunda.version>\([0-9]*\.[0-9]*\)\..*</camunda.version>.*#\1#p' pom.xml | head -1)}"
+VERSION="${1:-$(sed -n 's#.*<camunda.version>\(.*\)</camunda.version>.*#\1#p' pom.xml | head -1)}"
 
 # Clock control is process-scoped: it must be set on every start.
 # 8.9 and 8.10 read zeebe.clock.controlled, newer versions camunda.system.clock-controlled.
