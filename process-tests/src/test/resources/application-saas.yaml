@@ -22,6 +22,8 @@ camunda:
     cloud:
       cluster-id: ${CAMUNDA_CLUSTER_ID}
       region: ${CAMUNDA_CLUSTER_REGION}
+      # Production SaaS: camunda.io. Another stage, e.g. INT: ultrawombat.com (the token URL, audience and addresses follow).
+      domain: ${CAMUNDA_CLUSTER_DOMAIN:camunda.io}
 
 demo:
   # SaaS (<= 8.10) doesn't allow to manipulate the clock. With CPT 8.11 the public clock API is used: not verified on SaaS.
