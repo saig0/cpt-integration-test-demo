@@ -37,7 +37,8 @@ How to read the claims:
    controllable-clock flag** (✅ local cluster, management port set to a closed port, purge off). That is the best case for a
    shared environment; SaaS itself is still ❓ unverified.
 7. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
-8. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
+8. **One test run per cluster, exclusively.** CPT doesn't support parallel tests; purge, clock and the coverage report work on the whole cluster (limitation 11). Serialize the CI job and don't share the cluster.
+9. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
    unless told otherwise.
 
 ## What a remote run needs
@@ -50,6 +51,7 @@ How to read the claims:
 | Management API (port 9600) reachable | ✅ needed | ✅ needed¹ | ✅ needed¹ | only for the purge² | Purge (all versions) and the clock (≤ alpha1). |
 | Cluster clock controllable (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` or `ZEEBE_CLOCK_CONTROLLED=true`) | ✅ needed | ✅ needed | ✅ needed | ❌ **not needed** (✅ legacy endpoint stayed `403`, timer tests passed) | Only for `increaseTime`/`setTime`. Verified: without it `DELETE /actuator/clock` returns `403 … the clock is immutable`; both variable names work on all three versions. The public clock API of the 8.11 runtime replaces it. |
 | Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | – | 🔎 needed (docs); ❓ not tried | Needed because CPT uses the public clock API. Only relevant when authorizations are enabled. |
+| Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 11 |
 | Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | `camunda.client.worker.defaults.enabled=false` in the tests. |
 
 ¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
@@ -71,7 +73,7 @@ The first four columns ran on a dedicated local C8 Run (8.11-SNAPSHOT: CPT snaps
 | Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 (#23160). 8.11: ☁️ `increaseTime` works, but ❌ stalls Elasticsearch indexing for the size of the jump (limitation 10) |
 | DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 passed, ⚠️ fixed data, selectors by definition ID (see 6) |
-| Process coverage report | ✅ | ✅ | ✅ | ✅ | ❓ |
+| Coverage report (HTML + JSON, BPMN and DMN) per test class | ✅ | ✅ | ✅ | ✅ scoped to the test data (see 6) | ☁️ 8.11: generated, scoped to the test data |
 | Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API, use `data-deletion-mode: none` (☁️ works) |
 | Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | ✅ same | needed |
 | Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ✅ works without management API (clock read via REST; no warning). ☁️ also on SaaS: the second run on leftover data passed | ⚠️ ≤ alpha1: falls back to *off* when the management API is unreachable (✅ warning) |
@@ -119,34 +121,6 @@ the clock reset (`DELETE /actuator/clock` → 200); a purge (or restart) recover
 * Workaround (8.10, 8.11-alpha1 jar): no `increaseTime` together with `none`. Test timers on a dedicated cluster with purge,
   or make the timer duration a process variable and use short durations on the shared cluster.
 
-### 10. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
-**Symptom.** With the timer tests enabled (`increaseTime(5 days)`, then CPT resets the clock), every following test fails with "No process instance / user task /
-decision instance … found". The engine keeps working (external workers process new instances, the topology is `healthy`), but the **search index receives
-nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newer than the timer test's instance was indexed for 21+ minutes (checked until 12:09Z).
-
-**Cause: the secondary storage / exporter, not CPT.** Confirmed by a reproduction (the hint that SaaS uses Elasticsearch, unlike C8 Run's H2, was right):
-
-| Setup (local, C8 Run 8.11.0-alpha1, snapshot CPT) | Result |
-| --- | --- |
-| Default: H2 database + RDBMS exporter | ✅ 21/21 with `none` and timer tests; index delay after a +120 s jump and reset: **1.0 s** (no delay) |
-| Elasticsearch 8.19.14 + Elasticsearch exporter, no timer tests (control) | ✅ 19 passed, 2 skipped |
-| Elasticsearch, timer tests on (same suite as on SaaS) | ❌ the timer test passes, **the 20 other tests fail**; ES holds only the instances up to the timer test, no exporter errors in the log, exporter `ENABLED` |
-| Elasticsearch, +120 s jump, then reset | indexing normal while jumped (1.0 s); **an instance created right after the reset appeared in the index after 121.4 s** — the size of the jump |
-| Elasticsearch, 600 more instances after the stall | ✅ the index caught up (523 of 600 visible) — the **batch-size flush still works**, the **time-based flush does not** |
-
-**Interpretation (❓ not verified in the exporter source).** The exporter flushes its batch on a timer that runs on the broker's clock. A jump forward moves the next
-flush into the future; after the reset the clock goes back, and the next flush is due only when real time reaches the jumped time. Small batches (a test suite)
-stay unflushed until then. With a +5 day jump that means **up to 5 days**. For the SaaS cluster used here the index would then recover around **2026-11-15 11:48Z**,
-or earlier after a restart (❓ not tried; no purge on SaaS).
-
-**Consequences**
-* **Do not manipulate the clock on any cluster with an Elasticsearch/OpenSearch exporter that you cannot restart quickly: SaaS and probably every self-managed
-  Kubernetes/OpenShift cluster** (their default storage is Elasticsearch/OpenSearch). This probably holds for the old management API on 8.10/8.9 as well
-  (❓ not tried; the mechanism is in the exporter). The `saas` profile keeps the timer tests off.
-* The same mechanism may be part of why #62541 showed an unhealthy partition (❓).
-* If a clock test must run on such a cluster: keep the jump small (the delay equals the jump) and make the timer durations in the test configurable.
-* Candidate for an issue: the exporter's flush timer should not depend on the (manipulated) clock, or the clock reset should reschedule it.
-
 ### 4. Job workers: stale REST long-polling with `data-deletion-mode: none` (#62521, open) — ❓ not reproduced
 Workers that run **in the test JVM** (Spring Boot default `@JobWorker`s, CPT mocks) keep their long-poll request across tests and can
 take jobs that belong to the next test. Workaround: `camunda.client.zeebe.prefer-rest-over-grpc=false`. **This demo is
@@ -175,6 +149,11 @@ a stranger's task. Rules for a shared cluster, all implemented in this demo:
 in the 8.9.28 jar). In 8.10 and the 8.11.0-alpha1 jar that scoping reads the cluster time from the management API; if it can't,
 CPT logs *"Test case isolation by start time will be disabled for this test case"* (✅) and you depend on the rules above.
 The 8.11 snapshot reads the time through the public clock API and keeps the isolation without the management API (✅ no warning).
+
+**The coverage report uses the same scoping** (✅ 8.11 snapshot, local and ☁️ SaaS): CPT writes `report.html` and `report.json` (to `target/coverage-report`, plus a summary per
+test class in the log) from the data of the test run. Proof: with 20 process instances left on the cluster (`none`), a run of only the decision tests produced a
+report with the decision coverage and **no process coverage**; and the 2 consecutive full runs both listed exactly the 21 test cases of their own run. Without start-time
+isolation (8.9 jar, or when the clock can't be read) the report would include everything on the cluster (🔎 not run; on 8.9 the purge keeps the cluster empty anyway).
 
 ### 7. Management API (9600) must be reachable for the purge and (≤ 8.11-alpha1 jar) the clock — 🔎/❓
 On Kubernetes/OpenShift that's the Camunda pod's management port: a Service/Route or `kubectl port-forward`. It is
@@ -206,7 +185,46 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
   token URL, audience and addresses follow. Explicit `rest-address`/`grpc-address` in the base `application.yaml` also override the SaaS mode (a bug of this
   demo, fixed). The credentials file of the console also exports `ZEEBE_*` variables: the SDK logs deprecation warnings for them.
 * Not verified: SaaS with 8.10/8.9, authenticated self-managed clusters incl. the `SYSTEM` authorizations,
-  OpenShift, parallel test execution, the 8.11 final CPT.
+  OpenShift, the 8.11 final CPT. Parallel test execution is not supported (limitation 11), so it was not tried.
+
+### 10. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
+**Symptom.** With the timer tests enabled (`increaseTime(5 days)`, then CPT resets the clock), every following test fails with "No process instance / user task /
+decision instance … found". The engine keeps working (external workers process new instances, the topology is `healthy`), but the **search index receives
+nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newer than the timer test's instance was indexed for 21+ minutes (checked until 12:09Z).
+
+**Cause: the secondary storage / exporter, not CPT.** Confirmed by a reproduction (the hint that SaaS uses Elasticsearch, unlike C8 Run's H2, was right):
+
+| Setup (local, C8 Run 8.11.0-alpha1, snapshot CPT) | Result |
+| --- | --- |
+| Default: H2 database + RDBMS exporter | ✅ 21/21 with `none` and timer tests; index delay after a +120 s jump and reset: **1.0 s** (no delay) |
+| Elasticsearch 8.19.14 + Elasticsearch exporter, no timer tests (control) | ✅ 19 passed, 2 skipped |
+| Elasticsearch, timer tests on (same suite as on SaaS) | ❌ the timer test passes, **the 20 other tests fail**; ES holds only the instances up to the timer test, no exporter errors in the log, exporter `ENABLED` |
+| Elasticsearch, +120 s jump, then reset | indexing normal while jumped (1.0 s); **an instance created right after the reset appeared in the index after 121.4 s** — the size of the jump |
+| Elasticsearch, 600 more instances after the stall | ✅ the index caught up (523 of 600 visible) — the **batch-size flush still works**, the **time-based flush does not** |
+
+**Interpretation (❓ not verified in the exporter source).** The exporter flushes its batch on a timer that runs on the broker's clock. A jump forward moves the next
+flush into the future; after the reset the clock goes back, and the next flush is due only when real time reaches the jumped time. Small batches (a test suite)
+stay unflushed until then. With a +5 day jump that means **up to 5 days**. For the SaaS cluster used here the index would then recover around **2026-11-15 11:48Z**,
+or earlier after a restart (❓ not tried; no purge on SaaS).
+
+**Consequences**
+* **Do not manipulate the clock on any cluster with an Elasticsearch/OpenSearch exporter that you cannot restart quickly: SaaS and probably every self-managed
+  Kubernetes/OpenShift cluster** (their default storage is Elasticsearch/OpenSearch). This probably holds for the old management API on 8.10/8.9 as well
+  (❓ not tried; the mechanism is in the exporter). The `saas` profile keeps the timer tests off.
+* The same mechanism may be part of why #62541 showed an unhealthy partition (❓).
+* If a clock test must run on such a cluster: keep the jump small (the delay equals the jump) and make the timer durations in the test configurable.
+* Candidate for an issue: the exporter's flush timer should not depend on the (manipulated) clock, or the clock reset should reschedule it.
+
+### 11. No parallel tests: the cluster must be used exclusively by CPT — 🔎 given by the CPT design, consistent with what we measured
+CPT doesn't support running tests in parallel, and a remote cluster used for integration tests should belong to CPT **alone** while the tests run:
+* the cleanup (purge) and the clock reset/jump are **cluster-wide**, so one test run disturbs any other test run or person using the cluster (✅ limitation 1 and 2);
+* the assertions are scoped by the *start time of the test case* and by what the test selects, not by "who created the data" — concurrent runs on one cluster see
+  each other's data in time-scoped queries, coverage reports and process-definition selectors (JSON test cases select by `processDefinitionId`);
+* the assertion data source of CPT is global state (`CamundaAssert.initialize(dataSource)` in the execution listener, 🔎 source), so also two test classes in one JVM can't run concurrently.
+
+Consequences for CI (e.g. GitLab): run the CPT job **serialized** per cluster (for example a `resource_group`), one cluster per pipeline/branch if pipelines must run concurrently, and
+don't use that cluster for manual/acceptance testing at the same time. This also settles the "shared QA cluster" question of the issue: *shared with people or other
+pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the limits above (`none`, unique IDs, scoped selectors, no clock) on a cluster that nobody else uses at that moment.
 
 ## Version differences
 
@@ -262,4 +280,4 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
    Run clock tests on Elasticsearch in CI too, not only on C8 Run with H2.
    Run the demo against an OpenShift cluster with
    authentication: management API access, `authorizations`, outbound connector runtime, GitLab CI job.
-8. Try parallel test execution with the remote runtime.
+8. Document that parallel test execution is not supported and the cluster must be exclusive (limitation 11), including the CI guidance. A guard (for example a lock on the cluster, or a warning when other process instances exist) would make misuse visible.
