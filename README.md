@@ -110,12 +110,13 @@ mvn -pl process-tests test
 ```
 
 All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timer tests move the cluster clock.
-A coverage report is written to `process-tests/target/coverage-report/report.html`.
+A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/` (`report.html`, `report.json`). It covers the data of the test run only (CPT limits its queries to the start time of the test case).
 
 Stop the cluster with `c8ctl cluster stop`.
 
 > ⚠️ **CPT deletes all data of the cluster after every test.** Never point the tests at a cluster with data
-> you care about. Use a dedicated test cluster (a separate C8 Run version/instance is enough). See
+> you care about. Use a dedicated test cluster (a separate C8 Run version/instance is enough). **Use the cluster exclusively for CPT:** CPT doesn't
+> support parallel tests, and purge, clock and coverage are cluster-wide. Run one test job at a time per cluster. See
 > [limitations](docs/CAPABILITIES.md#limitations-and-blockers).
 
 ## Run on Camunda 8 SaaS
