@@ -9,6 +9,7 @@ import io.camunda.client.CamundaClient;
 import io.camunda.client.api.response.ProcessInstanceEvent;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
+import io.camunda.process.test.api.assertions.UserTaskSelector;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -33,8 +34,10 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
  *       send-invoice-rejection}.
  * </ul>
  *
- * <p>Each test uses a unique invoice ID. That keeps the tests independent on a shared cluster
- * where CPT doesn't delete the data between the tests (SaaS).
+ * <p>Each test uses a unique invoice ID, and the user task selectors are scoped to the started
+ * process instance. That keeps the tests independent on a shared cluster where CPT doesn't delete
+ * the data between the tests (SaaS). An unscoped {@code byElementId("UserTask_ApproveInvoice")}
+ * could match (and complete!) the user task of another test or process instance.
  */
 @SpringBootTest(
     classes = TestApplication.class,
@@ -59,9 +62,9 @@ public class InvoiceApprovalTest {
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human approves the invoice
-    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated().hasAssignee("Zee");
+    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated().hasAssignee("Zee");
     processTestContext.completeUserTask(
-        byElementId("UserTask_ApproveInvoice"), Map.of("approved", true));
+        approveInvoiceTask(processInstance), Map.of("approved", true));
 
     // then: the external workers archived the invoice and added it to the accounting system
     assertThatProcessInstance(processInstance)
@@ -84,9 +87,9 @@ public class InvoiceApprovalTest {
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human rejects the invoice
-    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated().hasAssignee("Zee");
+    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated().hasAssignee("Zee");
     processTestContext.completeUserTask(
-        byElementId("UserTask_ApproveInvoice"),
+        approveInvoiceTask(processInstance),
         Map.of("approved", false, "rejectionReason", "it is a test case :-)"));
 
     // then: the external worker (the replacement of the HTTP connector) sent the rejection
@@ -139,15 +142,15 @@ public class InvoiceApprovalTest {
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human approves the invoice
-    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated();
+    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated();
     processTestContext.completeUserTask(
-        byElementId("UserTask_ApproveInvoice"), Map.of("approved", true));
+        approveInvoiceTask(processInstance), Map.of("approved", true));
 
     // then: the error from the external worker leads to the manual archiving
-    assertThatUserTask(byElementId("UserTask_ManuallyArchiveInvoice"))
+    assertThatUserTask(manuallyArchiveTask(processInstance))
         .isCreated()
         .hasCandidateGroup("archive-team");
-    processTestContext.completeUserTask(byElementId("UserTask_ManuallyArchiveInvoice"));
+    processTestContext.completeUserTask(manuallyArchiveTask(processInstance));
 
     assertThatProcessInstance(processInstance)
         .hasCompletedElementsInOrder(
@@ -159,6 +162,15 @@ public class InvoiceApprovalTest {
         .hasTerminatedElements(byId("ServiceTask_ArchiveInvoice"))
         .hasVariable("accountingEntryId", "ACC-" + invoiceId)
         .isCompleted();
+  }
+
+  // Scope the selectors to the process instance of the test (see the class comment).
+  private static UserTaskSelector approveInvoiceTask(final ProcessInstanceEvent processInstance) {
+    return byElementId("UserTask_ApproveInvoice", processInstance.getProcessInstanceKey());
+  }
+
+  private static UserTaskSelector manuallyArchiveTask(final ProcessInstanceEvent processInstance) {
+    return byElementId("UserTask_ManuallyArchiveInvoice", processInstance.getProcessInstanceKey());
   }
 
   private ProcessInstanceEvent startProcess(final String invoiceId) {
