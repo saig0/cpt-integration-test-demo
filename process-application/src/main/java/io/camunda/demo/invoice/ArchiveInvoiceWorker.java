@@ -1,4 +1,4 @@
-package io.camunda.demo.workers;
+package io.camunda.demo.invoice;
 
 import io.camunda.client.annotation.JobWorker;
 import io.camunda.client.annotation.Variable;

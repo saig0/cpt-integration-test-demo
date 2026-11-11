@@ -10,11 +10,11 @@
     <version>1.0.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>workers</artifactId>
-  <name>Invoice job workers</name>
+  <artifactId>process-application</artifactId>
+  <name>Invoice process application</name>
   <description>
-    Stand-alone job workers for the invoice process. They simulate the external services and custom
-    connectors of the system under test. They are NOT started by the tests.
+    The invoice process application: it owns and deploys the process resources (BPMN, DMN) and hosts the job workers
+    that simulate the external services and custom connectors. It is NOT started by the tests.
   </description>
 
   <dependencies>

@@ -12,16 +12,16 @@
   <name>CPT integration test demo</name>
   <description>
     Demo: run Camunda Process Test (CPT) tests against a remote Camunda 8 environment
-    (C8 Run or SaaS) while the job workers run as separate, external applications.
+    (C8 Run or SaaS). The process application (process resources and job workers) runs as a separate application and owns the deployed resources.
   </description>
 
   <modules>
-    <module>workers</module>
+    <module>process-application</module>
     <module>process-tests</module>
   </modules>
 
   <properties>
-    <!-- The Camunda version of this branch. The client, the Spring SDK and CPT use the same version. -->
+    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh), the process application and the tests. -->
     <camunda.version>8.10.9</camunda.version>
     <!-- Spring Boot version that is compatible with the Camunda version above (Camunda 8.9: 4.0.x). -->
     <spring-boot.version>4.1.2</spring-boot.version>

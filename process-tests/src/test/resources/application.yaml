@@ -4,9 +4,13 @@ camunda:
   process-test:
     # Don't start a runtime with Testcontainers. Connect to the running cluster instead.
     runtime-mode: remote
+    # Don't purge the cluster after each test (CPT's default, CLUSTER_PURGE). The purge deletes everything on the
+    # cluster, including the BPMN/DMN resources that the process application deployed. The tests don't deploy
+    # resources, so the deployments must survive. The tests are isolated by unique invoice IDs and by selectors
+    # that are scoped to the started process instance. Requires CPT 8.10+.
+    data-deletion-mode: none
     remote:
-      # The management API of the cluster. CPT uses it to delete the data between the tests and
-      # (until the public clock API is used) to manipulate the clock.
+      # The management API of the cluster. Only used by CPT <= 8.10 / the 8.11.0-alpha1 jar to manipulate the clock.
       camunda-monitoring-api-address: http://127.0.0.1:9600
       # Only needed to test with Connectors (the tests of this demo don't use them)
       connectors-rest-api-address: http://127.0.0.1:8086
