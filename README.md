@@ -1,9 +1,10 @@
 # CPT integration test demo
 
 Demo for running [Camunda Process Test (CPT)](https://docs.camunda.io/docs/apis-tools/testing/getting-started/)
-tests against an **already running Camunda 8 cluster**, while the **job workers run as separate applications**. It
-mimics the setup of an integration environment in which external services and custom
-connectors are deployed independently and the process tests invoke them instead of mocking them.
+tests against an **already running Camunda 8 cluster**, while the **process application runs as a separate application**
+that owns the process resources (BPMN, DMN) and hosts the job workers. It mimics the setup of an integration environment in
+which the process application, the external services and custom connectors are deployed independently, and the process tests
+verify the deployed process and invoke the real workers instead of mocking them.
 
 > **Branch `main` — C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`.** Variations for the other versions live in the branches
 > [`8.10`](../../tree/8.10) and [`8.9`](../../tree/8.9). What works in which version, the limitations and the
@@ -13,8 +14,8 @@ connectors are deployed independently and the process tests invoke them instead 
 
 ```
 .
-├── workers/          Spring Boot app with the job workers (the "external services"). Started independently.
-├── process-tests/    CPT tests (Java + JSON), the BPMN and the DMN. Connects to a remote cluster. No job workers inside.
+├── process-application/  Spring Boot app: owns and deploys the BPMN and DMN, hosts the job workers (the "external services"). Started independently.
+├── process-tests/        CPT tests (Java + JSON). Connects to a remote cluster. No process resources and no job workers inside.
 ├── scripts/          start-c8run.sh: start C8 Run (with a controllable clock for CPT ≤ 8.10)
 ├── docs/             Capabilities, limitations and version differences
 └── .env.example      SaaS credentials template
@@ -29,10 +30,10 @@ longer an HTTP JSON connector, but a plain service task with the job type `send-
 
 | Element                        | Job type / decision         | Handled by                      |
 | ------------------------------ | --------------------------- | ------------------------------- |
-| Auto-approve invoice           | DMN `auto-approve-invoice`  | the cluster (deployed by the tests) |
-| Archive invoice                | `archive-invoice`           | `workers` (fails for `…LEGACY-ERROR…` IDs) |
-| Add invoice to accounting      | `add-invoice-to-accounting` | `workers`                       |
-| Send invoice rejection         | `send-invoice-rejection`    | `workers` (replaces the connector) |
+| Auto-approve invoice           | DMN `auto-approve-invoice`  | the cluster (deployed by the process application) |
+| Archive invoice                | `archive-invoice`           | `process-application` (fails for `…LEGACY-ERROR…` IDs) |
+| Add invoice to accounting      | `add-invoice-to-accounting` | `process-application`                       |
+| Send invoice rejection         | `send-invoice-rejection`    | `process-application` (replaces the connector) |
 | Approve / manually archive     | user tasks                  | the tests (`completeUserTask`)  |
 
 Tests in `process-tests/src/test`:
@@ -46,34 +47,35 @@ Tests in `process-tests/src/test`:
 ## How it works
 
 ```
- ┌──────────────────────┐  deploy, start, assert,       ┌─────────────────────────┐
- │ process-tests (JUnit)│  complete user tasks,         │  Camunda 8 cluster      │
- │  CPT, runtime-mode:  │ ────────────────────────────► │  C8 Run  (default)      │
- │  remote              │  increase time, purge data    │  or SaaS                │
- └──────────────────────┘  (REST/gRPC 8080/26500,       │                         │
-                            management API 9600)        │                         │
- ┌──────────────────────┐                                │                         │
- │ workers (Spring Boot)│ ◄───────── activate/complete jobs ─────────────────────┘
- │  external services   │
- └──────────────────────┘
+ ┌──────────────────────┐   start instances, assert,    ┌─────────────────────────┐
+ │ process-tests (JUnit)│   complete user tasks,        │                         │
+ │  CPT, runtime-mode:  │ ────────────────────────────► │  Camunda 8 cluster      │
+ │  remote              │   increase time               │  C8 Run (default)       │
+ └──────────────────────┘                               │  or SaaS                │
+ ┌──────────────────────┐   deploy BPMN/DMN             │                         │
+ │ process-application  │ ────────────────────────────► │                         │
+ │  resources + workers │ ◄──────────────────────────── │                         │
+ └──────────────────────┘   activate / complete jobs    └─────────────────────────┘
 ```
 
 * **Remote runtime.** `camunda.process-test.runtime-mode: remote` makes CPT connect to the running cluster instead of
   starting a Testcontainers runtime. No Docker is needed. See
   [`process-tests/src/test/resources/application.yaml`](process-tests/src/test/resources/application.yaml).
+* **The process application owns the resources.** The BPMN and DMN live in `process-application` and are deployed by it at startup
+  (`@Deployment`). **The tests don't deploy anything**: they only check that the resources are there (`ProcessApplicationDeployment`) and verify the
+  process as deployed. That way a test run can't override what the process application has deployed.
 * **Workers are external.** The tests neither start nor mock the job workers
   (`camunda.client.worker.defaults.enabled=false`). The tests assert the *effects*: the process path and the
   variables the workers return (`archiveReference`, `accountingEntryId`, `rejectionNotificationId`).
-* **Deployment.** `TestApplication` deploys the BPMN with `@Deployment`. CPT re-deploys it before each test because
-  it purges the cluster between the tests.
-* **Test isolation.** On C8 Run, CPT deletes **all** data of the cluster after each test (`POST /actuator/cluster/purge`
-  on the management API). On a cluster where that is not possible (SaaS), the tests are isolated by a unique invoice ID
-  and by assertions that are scoped to the started process instance.
+* **No cleanup, isolation by scoping.** CPT's default cleanup purges **all** data of the cluster after each test
+  (`POST /actuator/cluster/purge`), including the resources that the process application deployed — the tests would fail from the second test on.
+  The tests therefore run with `camunda.process-test.data-deletion-mode: none` and isolate themselves with a unique invoice ID per test,
+  selectors that are scoped to the started process instance, and CPT's start-time scoping (8.10+).
 * **Clock.** `increaseTime(Duration.ofDays(5))` (timer tests) uses the public clock API of the cluster (`/v2/clock`) with CPT 8.11.
   CPT ≤ 8.10 (and the 8.11.0-alpha1 jar) use the management API and need a cluster with a controllable clock instead. The timer
   tests are skipped for SaaS (`demo.clock-manipulation.enabled=false`), because it is not verified there.
 * **Versions.** The tests use the Camunda client and CPT of `cpt.version` (`8.11.0-SNAPSHOT`, resolved from
-  `https://artifacts.camunda.com/artifactory/public`). C8 Run and the workers use `camunda.version` (`8.11.0-alpha1`).
+  `https://artifacts.camunda.com/artifactory/public`). C8 Run and the process application use `camunda.version` (`8.11.0-alpha1`).
 
 ## Prerequisites
 
@@ -93,10 +95,10 @@ The script also makes the clock controllable (and verifies it). With the CPT sna
 `c8ctl cluster start 8.11.0-alpha1` works. It is needed with the 8.11.0-alpha1 CPT jar and on the `8.10`/`8.9` branches
 (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start <version>`).
 
-**2. Start the job workers** in a second terminal. They keep running across test runs.
+**2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs.
 
 ```bash
-mvn -pl workers spring-boot:run
+mvn -pl process-application spring-boot:run
 ```
 
 **3. Run the tests**
@@ -110,7 +112,8 @@ A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/tar
 
 Stop the cluster with `c8ctl cluster stop`.
 
-> ⚠️ **CPT deletes all data of the cluster after every test.** Never point the tests at a cluster with data
+> ⚠️ **CPT's default is to delete all data of the cluster after every test** — this demo turns it off (it would delete the deployed resources).
+> Don't enable it (`data-deletion-mode: cluster_purge`) and never point the tests at a cluster with data
 > you care about. Use a dedicated test cluster (a separate C8 Run version/instance is enough). **Use the cluster exclusively for CPT:** CPT doesn't
 > support parallel tests, and purge, clock and coverage are cluster-wide. Run one test job at a time per cluster. See
 > [limitations](docs/CAPABILITIES.md#limitations-and-blockers).
@@ -125,10 +128,10 @@ tests did run, but moving the clock delays the Elasticsearch exporter by the siz
 1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate` (or `Orchestration`).
 2. `cp .env.example .env`, fill in the values (the file is gitignored), and load them: `set -a; . .env; set +a`. For a stage other than production set
    `CAMUNDA_CLUSTER_DOMAIN` (for example `ultrawombat.com` for INT). The credentials file of the console (`export …`) works as well: `set -a; . <file>; set +a`.
-3. Start the workers against SaaS (they stay running):
+3. Start the process application against SaaS (it stays running):
 
    ```bash
-   SPRING_PROFILES_ACTIVE=saas mvn -pl workers spring-boot:run
+   SPRING_PROFILES_ACTIVE=saas mvn -pl process-application spring-boot:run
    ```
 
 4. Run the tests against SaaS:
@@ -147,11 +150,11 @@ tests did run, but moving the clock delays the Elasticsearch exporter by the siz
 | --- | --- |
 | Remote runtime, addresses, timeouts | `process-tests/src/test/resources/application.yaml` |
 | SaaS overrides | `process-tests/src/test/resources/application-saas.yaml` |
-| Worker connection (C8 Run / SaaS) | `workers/src/main/resources/application*.yaml` |
+| Process application: connection (C8 Run / SaaS), resources | `process-application/src/main/resources/application*.yaml`, `…/bpmn/` |
 | Camunda version of the branch | `camunda.version` in the root `pom.xml` |
 
 Any property can be overridden on the command line, for example
-`mvn -pl process-tests test -Dcamunda.process-test.data-deletion-mode=none` (8.10+).
+`mvn -pl process-tests test -Dcamunda.process-test.assertion.timeout=PT30S`.
 
 ## Troubleshooting
 
@@ -160,5 +163,6 @@ Any property can be overridden on the command line, for example
 | `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
 | Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT jar or the `8.10`/`8.9` branches: the cluster was started without a controllable clock. Use `scripts/start-c8run.sh`. |
 | `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1 jar (#62541, fixed in the snapshot). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
-| Assertions time out waiting for a step | The workers are not running (or run against another cluster). Check the worker log. |
-| Worker log shows `500 Internal Server Error` while activating jobs | Harmless: it happens while CPT purges the cluster. The workers recover. |
+| `The process application has not deployed its resources to the cluster` | Start the process application first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
+| Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
+| Worker log shows `500 Internal Server Error` while activating jobs | Only when the cluster is purged (not the default of this demo). Harmless, the workers recover. |
