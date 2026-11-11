@@ -10,24 +10,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit.jupiter.EnabledIf;
 
 /**
- * Runs the JSON test cases against the remote cluster. Adapted from the CPT example
- * (InvoiceApprovalJsonTest). InvoiceApprovalTest is the equivalent class that uses the Java API.
- *
- * <p>Differences to the original example: the test cases don't mock the job workers (the external
- * workers handle the jobs, see the process-application module), and they assert the variables that the workers
- * return.
- *
- * <p>The class is disabled with {@code demo.json-tests.enabled=false} (CPT 8.9: no start-time
- * isolation and no way to switch off the cleanup, see application.yaml of the 8.9 branch).
+ * Runs the JSON test cases against the remote cluster. They cover the same paths as {@link
+ * InvoiceApprovalTest} and the decision as {@link InvoiceDecisionTest}.
  *
  * <p>JSON test cases have fixed data and select by process definition ID, not by process instance.
- * They rely on the cleanup between the tests (C8 Run), and are less suited for a shared cluster than
- * the Java tests.
+ * They rely on the start-time scoping of CPT 8.10+ when the cluster isn't purged between the tests.
+ * The class is disabled with {@code demo.json-tests.enabled=false}.
  */
 @EnabledIf(expression = "${demo.json-tests.enabled:true}", loadContext = true)
-@SpringBootTest(
-    classes = TestApplication.class,
-    properties = "camunda.client.worker.defaults.enabled=false")
+@SpringBootTest(classes = TestApplication.class)
 @CamundaSpringProcessTest
 public class InvoiceApprovalJsonTest {
 

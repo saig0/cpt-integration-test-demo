@@ -19,10 +19,6 @@ camunda:
     # No client addresses on purpose: the defaults of the self-managed mode (REST http://localhost:8080, gRPC
     # http://localhost:26500) are the local C8 Run. Explicit addresses here would also apply to the "saas" profile.
     mode: self-managed
-    # Job workers run in a separate application
-    worker:
-      defaults:
-        enabled: false
 
 demo:
   clock-manipulation:

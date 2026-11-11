@@ -11,10 +11,8 @@ import io.camunda.client.CamundaClient;
 import io.camunda.client.api.response.ProcessInstanceEvent;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
-import io.camunda.process.test.api.assertions.UserTaskSelector;
 import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,34 +20,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit.jupiter.EnabledIf;
 
 /**
- * Process tests for the invoice approval process, adapted from the CPT example (InvoiceApprovalTest
- * in camunda/camunda, testing/camunda-process-test-example).
- *
- * <p>Differences to the original example:
- *
- * <ul>
- *   <li>The tests run against a remote cluster (C8 Run or SaaS), see {@code application.yaml}.
- *   <li>The tests don't deploy the BPMN/DMN. The process application owns and deploys them (module
- *       {@code process-application}); the tests verify the process as it is deployed there.
- *   <li>The job workers are NOT started by the tests and NOT mocked. They run as part of the
- *       process application (module {@code process-application}) and simulate external services and custom connectors.
- *       The tests verify their effects through the variables they return to the process instance.
- *   <li>The HTTP connector of the rejection task is replaced by the job worker {@code
- *       send-invoice-rejection}.
- * </ul>
- *
- * <p>Each test uses a unique invoice ID, and the user task selectors are scoped to the started
- * process instance. That keeps the tests independent on a shared cluster where CPT doesn't delete
- * the data between the tests (SaaS). An unscoped {@code byElementId("UserTask_ApproveInvoice")}
- * could match (and complete!) the user task of another test or process instance.
+ * Process tests for the invoice approval process. They run against a remote cluster (see {@code
+ * application.yaml}). The process application deploys the process and runs the job workers that
+ * simulate the external services and custom connectors. The tests verify the path through the
+ * process and the variables that the workers return.
  */
-@SpringBootTest(
-    classes = TestApplication.class,
-    properties = {
-      // Don't start job workers in the test JVM. There are none, but be explicit: the workers are
-      // external, and a worker in the test would compete with them.
-      "camunda.client.worker.defaults.enabled=false",
-    })
+@SpringBootTest(classes = TestApplication.class)
 @CamundaSpringProcessTest
 public class InvoiceApprovalTest {
 
@@ -62,13 +38,13 @@ public class InvoiceApprovalTest {
   @Test
   void happyPath() {
     // given
-    final String invoiceId = newInvoiceId("HAPPY");
+    final String invoiceId = "INV-HAPPY";
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human approves the invoice
-    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated().hasAssignee("Zee");
+    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated().hasAssignee("Zee");
     processTestContext.completeUserTask(
-        approveInvoiceTask(processInstance), Map.of("approved", true));
+        byElementId("UserTask_ApproveInvoice"), Map.of("approved", true));
 
     // then: the external workers archived the invoice and added it to the accounting system
     assertThatProcessInstance(processInstance)
@@ -87,13 +63,13 @@ public class InvoiceApprovalTest {
   @Test
   void rejectionPath() {
     // given
-    final String invoiceId = newInvoiceId("REJECTED");
+    final String invoiceId = "INV-REJECTED";
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human rejects the invoice
-    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated().hasAssignee("Zee");
+    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated().hasAssignee("Zee");
     processTestContext.completeUserTask(
-        approveInvoiceTask(processInstance),
+        byElementId("UserTask_ApproveInvoice"),
         Map.of("approved", false, "rejectionReason", "it is a test case :-)"));
 
     // then: the external worker (the replacement of the HTTP connector) sent the rejection
@@ -112,7 +88,7 @@ public class InvoiceApprovalTest {
   @Test
   void autoApproval() {
     // given: a small invoice (< 50 EUR) that the DMN decision "auto-approve-invoice" approves
-    final String invoiceId = newInvoiceId("AUTO");
+    final String invoiceId = "INV-AUTO";
 
     // when
     final ProcessInstanceEvent processInstance = startProcess(invoiceId, 30, "1089");
@@ -143,7 +119,7 @@ public class InvoiceApprovalTest {
   @Test
   void approvalTimeout() {
     // given
-    final String invoiceId = newInvoiceId("TIMEOUT");
+    final String invoiceId = "INV-TIMEOUT";
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     assertThatProcessInstance(processInstance).hasActiveElements(byId("UserTask_ApproveInvoice"));
@@ -167,19 +143,19 @@ public class InvoiceApprovalTest {
   @Test
   void archiveSystemError() {
     // given: the simulated legacy archive system fails for this invoice
-    final String invoiceId = newInvoiceId("LEGACY-ERROR");
+    final String invoiceId = "INV-LEGACY-ERROR";
     final ProcessInstanceEvent processInstance = startProcess(invoiceId);
 
     // when: a human approves the invoice
-    assertThatUserTask(approveInvoiceTask(processInstance)).isCreated();
+    assertThatUserTask(byElementId("UserTask_ApproveInvoice")).isCreated();
     processTestContext.completeUserTask(
-        approveInvoiceTask(processInstance), Map.of("approved", true));
+        byElementId("UserTask_ApproveInvoice"), Map.of("approved", true));
 
     // then: the error from the external worker leads to the manual archiving
-    assertThatUserTask(manuallyArchiveTask(processInstance))
+    assertThatUserTask(byElementId("UserTask_ManuallyArchiveInvoice"))
         .isCreated()
         .hasCandidateGroup("archive-team");
-    processTestContext.completeUserTask(manuallyArchiveTask(processInstance));
+    processTestContext.completeUserTask(byElementId("UserTask_ManuallyArchiveInvoice"));
 
     assertThatProcessInstance(processInstance)
         .hasCompletedElementsInOrder(
@@ -191,15 +167,6 @@ public class InvoiceApprovalTest {
         .hasTerminatedElements(byId("ServiceTask_ArchiveInvoice"))
         .hasVariable("accountingEntryId", "ACC-" + invoiceId)
         .isCompleted();
-  }
-
-  // Scope the selectors to the process instance of the test (see the class comment).
-  private static UserTaskSelector approveInvoiceTask(final ProcessInstanceEvent processInstance) {
-    return byElementId("UserTask_ApproveInvoice", processInstance.getProcessInstanceKey());
-  }
-
-  private static UserTaskSelector manuallyArchiveTask(final ProcessInstanceEvent processInstance) {
-    return byElementId("UserTask_ManuallyArchiveInvoice", processInstance.getProcessInstanceKey());
   }
 
   private ProcessInstanceEvent startProcess(final String invoiceId) {
@@ -229,9 +196,5 @@ public class InvoiceApprovalTest {
         .variables(Map.of("approver", "Zee", "invoice", invoice))
         .send()
         .join();
-  }
-
-  private static String newInvoiceId(final String scenario) {
-    return "INV-" + scenario + "-" + UUID.randomUUID().toString().substring(0, 8);
   }
 }
