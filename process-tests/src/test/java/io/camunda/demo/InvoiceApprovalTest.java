@@ -15,7 +15,6 @@ import io.camunda.process.test.api.assertions.UserTaskSelector;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,16 +53,10 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
 @CamundaSpringProcessTest
 public class InvoiceApprovalTest {
 
-  private static final String PROCESS_ID = ProcessApplicationDeployment.PROCESS_ID;
+  private static final String PROCESS_ID = "Process_InvoiceApproval";
 
   @Autowired private CamundaClient client;
   @Autowired private CamundaProcessTestContext processTestContext;
-
-  @BeforeEach
-  void requireProcessApplication() {
-    // the process application owns the BPMN/DMN resources, the tests don't deploy them
-    ProcessApplicationDeployment.requireDeployed(client);
-  }
 
   @DisplayName("Happy path through the process")
   @Test
