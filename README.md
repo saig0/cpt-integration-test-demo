@@ -83,8 +83,7 @@ mvn -pl process-tests test
 
 All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timer tests move the cluster clock.
 
-A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/report.html`. It
-covers the data of the test run only (CPT limits its queries to the start time of the test case). Open the HTML in a
+A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/report.html`. Open the HTML in a
 browser to see which paths and decision rows were executed.
 
 Then, stop the process application and the cluster. 
@@ -100,24 +99,31 @@ deletion (`data-deletion-mode: none`), increases the assertion timeout and skips
 snapshot CPT, the whole suite including the timer tests ran against a local cluster without the management API. On SaaS, the timer
 tests did run, but moving the clock delays the Elasticsearch exporter by the size of the jump, so they stay off.
 
-1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate` (or `Orchestration`).
+1. In the SaaS console create an API client (Cluster → API) with the scopes `Orchestration Cluster API`.
 2. `cp .env.example .env`, fill in the values (the file is gitignored), and load them: `set -a; . .env; set +a`. For a stage other than production set
    `CAMUNDA_CLUSTER_DOMAIN` (for example `ultrawombat.com` for INT). The credentials file of the console (`export …`) works as well: `set -a; . <file>; set +a`.
+ 
+   ```bash
+   cp .env.example .env
+   ```
+
 3. Start the process application against SaaS (it stays running):
 
    ```bash
+   set -a; . .env; set +a
    SPRING_PROFILES_ACTIVE=saas mvn -pl process-application spring-boot:run
    ```
 
 4. Run the tests against SaaS:
 
    ```bash
+   set -a; . .env; set +a
    mvn -pl process-tests test -Psaas
    ```
 
 > Status: verified on 8.11 only — against a cluster on the Camunda INT stage (`CAMUNDA_CLUSTER_DOMAIN=ultrawombat.com`, 8.11.0-alpha1) with the
 > snapshot CPT: 19 of 21 tests pass (the 2 timer tests are skipped), also a second run on top of the data of the first. **Don't enable the timer tests on
-> SaaS**: `increaseTime` delays the Elasticsearch exporter by the size of the jump. See limitation 10 in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+> SaaS**: `increaseTime` delays the Elasticsearch exporter by the size of the jump. See limitation in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 
 ## Configuration reference
 
@@ -125,7 +131,7 @@ tests did run, but moving the clock delays the Elasticsearch exporter by the siz
 | --- | --- |
 | Remote runtime, addresses, timeouts | `process-tests/src/test/resources/application.yaml` |
 | SaaS overrides | `process-tests/src/test/resources/application-saas.yaml` |
-| Process application: connection (C8 Run / SaaS), resources | `process-application/src/main/resources/application*.yaml`, `…/bpmn/` |
+| Process application: connection (C8 Run / SaaS) | `process-application/src/main/resources/application*.yaml` |
 | Camunda version of the branch | `camunda.version` in the root `pom.xml` |
 
 Any property can be overridden on the command line, for example
@@ -137,6 +143,6 @@ Any property can be overridden on the command line, for example
 | --- | --- |
 | `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8 cluster status`. |
 | Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT or CPT ≤ 8.10 (the `8.10`/`8.9` branches): the cluster was started without `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true`. Restart it with the variable. |
-| `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1 (#62541, fixed in the snapshot). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
+| `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1. Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
 | `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
