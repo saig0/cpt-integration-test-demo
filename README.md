@@ -96,18 +96,25 @@ c8 cluster stop
 SaaS has no management API (port 9600). The default configuration of this branch already avoids the purge by pointing the management API address to a closed port. The `saas` profile
 increases the assertion timeout. **Not verified on SaaS** for 8.9 (only 8.11 was).
 
-1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate` (or `Orchestration`).
+1. In the SaaS console create an API client (Cluster → API) with the scopes `Orchestration Cluster API`.
 2. `cp .env.example .env`, fill in the values (the file is gitignored), and load them: `set -a; . .env; set +a`. For a stage other than production set
    `CAMUNDA_CLUSTER_DOMAIN` (for example `ultrawombat.com` for INT). The credentials file of the console (`export …`) works as well: `set -a; . <file>; set +a`.
+ 
+   ```bash
+   cp .env.example .env
+   ```
+
 3. Start the process application against SaaS (it stays running):
 
    ```bash
+   set -a; . .env; set +a
    SPRING_PROFILES_ACTIVE=saas mvn -pl process-application spring-boot:run
    ```
 
 4. Run the tests against SaaS:
 
    ```bash
+   set -a; . .env; set +a
    mvn -pl process-tests test -Psaas
    ```
 
@@ -119,7 +126,7 @@ increases the assertion timeout. **Not verified on SaaS** for 8.9 (only 8.11 was
 | --- | --- |
 | Remote runtime, addresses, timeouts | `process-tests/src/test/resources/application.yaml` |
 | SaaS overrides | `process-tests/src/test/resources/application-saas.yaml` |
-| Process application: connection (C8 Run / SaaS), resources | `process-application/src/main/resources/application*.yaml`, `…/bpmn/` |
+| Process application: connection (C8 Run / SaaS) | `process-application/src/main/resources/application*.yaml` |
 | Camunda version of the branch | `camunda.version` in the root `pom.xml` |
 
 Any property can be overridden on the command line, for example
