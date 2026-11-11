@@ -4,14 +4,14 @@ camunda:
   process-test:
     # Don't start a runtime with Testcontainers. Connect to the running cluster instead.
     runtime-mode: remote
-    # Don't purge the cluster after each test (CPT's default, CLUSTER_PURGE). The purge deletes everything on the
-    # cluster, including the BPMN/DMN resources that the process application deployed. The tests don't deploy
-    # resources, so the deployments must survive. The tests are isolated by unique invoice IDs and by selectors
-    # that are scoped to the started process instance. Requires CPT 8.10+.
-    data-deletion-mode: none
+    # CPT 8.9 has no data-deletion-mode: it always purges the cluster after each test (through the management API),
+    # which would also delete the resources that the process application deployed (the tests don't deploy resources).
+    # Workaround: point the management API address to a closed port. CPT then logs "Failed to delete the runtime data,
+    # skipping" and "Failed to reset the time, skipping" after each test and keeps the data. Consequences: no clock
+    # manipulation (the clock uses the same address) and no JSON tests (no start-time isolation, see below).
     remote:
-      # The management API of the cluster. Only used by CPT <= 8.10 / the 8.11.0-alpha1 jar to manipulate the clock.
-      camunda-monitoring-api-address: http://127.0.0.1:9600
+      # See above: a closed port on purpose. (Default: http://127.0.0.1:9600, the management API of C8 Run.)
+      camunda-monitoring-api-address: http://127.0.0.1:9
       # Only needed to test with Connectors (the tests of this demo don't use them)
       connectors-rest-api-address: http://127.0.0.1:8086
       runtime-connection-timeout: PT1M
@@ -26,7 +26,12 @@ camunda:
 
 demo:
   clock-manipulation:
-    enabled: true
+    # CPT 8.9 needs the management API for the clock (closed above), so no timer tests.
+    enabled: false
+  json-tests:
+    # The JSON test cases select by process definition ID. CPT 8.9 has no start-time isolation, so on a cluster that is
+    # not purged they see the data of earlier runs. The Java tests are scoped to their process instance.
+    enabled: false
 
 logging:
   level:
