@@ -21,7 +21,7 @@
   </modules>
 
   <properties>
-    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh), the process application and the tests. -->
+    <!-- The Camunda version of this branch: C8 Run (`c8 cluster start`), the process application and the tests. -->
     <camunda.version>8.9.28</camunda.version>
     <!-- Spring Boot version that is compatible with the Camunda version above (Camunda 8.9: 4.0.x). -->
     <spring-boot.version>4.0.9</spring-boot.version>

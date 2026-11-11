@@ -15,7 +15,6 @@ verify the deployed process and invoke the real workers instead of mocking them.
 .
 ├── process-application/  Spring Boot app: owns and deploys the BPMN and DMN, hosts the job workers (the "external services"). Started independently.
 ├── process-tests/        CPT tests (Java + JSON). Connects to a remote cluster. No process resources and no job workers inside.
-├── scripts/          start-c8run.sh: start C8 Run (with a controllable clock for CPT ≤ 8.10)
 ├── docs/             Capabilities, limitations and version differences
 └── .env.example      SaaS credentials template
 ```
@@ -79,18 +78,19 @@ Tests in `process-tests/src/test`:
 ## Prerequisites
 
 * Java 21 and Maven 3.9+
-* [`c8ctl`](https://github.com/camunda/c8ctl) (Camunda 8 CLI) to install and run C8 Run: `npm install -g @camunda8/cli`
+* The [c8 CLI](https://github.com/camunda/c8ctl) (`c8`, also available as `c8ctl`) to install and run C8 Run: `npm install -g @camunda8/cli`
 * For SaaS: a cluster and an API client (see [Run on Camunda 8 SaaS](#run-on-camunda-8-saas))
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster.** The script starts the version of `camunda.version` (`8.9.28` on this branch). `c8ctl` downloads it if needed.
+**1. Start the cluster** with the c8 CLI (`c8` is the short name of `c8ctl`). It downloads the version on the first start. CPT 8.9. needs the clock control enabled:
 
 ```bash
-scripts/start-c8run.sh
+CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8 cluster start 8.9.28
 ```
 
-The management API (port 9600) of C8 Run is not used by the tests of this branch (see above).
+The environment variable makes the clock of the cluster controllable (CPT 8.9 changes the clock through the management API). The timer tests are **off** on this
+branch: the management API address is closed on purpose (see above), so the clock can't be changed. The variable only matters if you restore the address to experiment.
 
 **2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs.
 
@@ -107,7 +107,7 @@ mvn -pl process-tests test
 14 tests run and pass (4 Java process tests, 7 decision rows; the timer test and the 9 JSON test cases are skipped).
 A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/` (`report.html`, `report.json`). CPT 8.9 has no start-time scoping: on a cluster that is not purged the report may include the data of earlier runs.
 
-Stop the cluster with `c8ctl cluster stop`.
+Stop the cluster with `c8 cluster stop`.
 
 > ⚠️ **CPT's default is to delete all data of the cluster after every test** — this demo turns it off (it would delete the deployed resources).
 > Don't enable it (`data-deletion-mode: cluster_purge`) and never point the tests at a cluster with data
@@ -153,7 +153,7 @@ Any property can be overridden on the command line, for example
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
+| `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8 cluster status`. |
 | `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
 | Worker log shows `500 Internal Server Error` while activating jobs | Only when the cluster is purged (not the default of this demo). Harmless, the workers recover. |
