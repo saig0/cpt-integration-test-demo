@@ -15,6 +15,7 @@ import io.camunda.process.test.api.assertions.UserTaskSelector;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,8 +30,10 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
  *
  * <ul>
  *   <li>The tests run against a remote cluster (C8 Run or SaaS), see {@code application.yaml}.
- *   <li>The job workers are NOT started by the tests and NOT mocked. They run as a separate
- *       application (module {@code workers}) and simulate external services and custom connectors.
+ *   <li>The tests don't deploy the BPMN/DMN. The process application owns and deploys them (module
+ *       {@code process-application}); the tests verify the process as it is deployed there.
+ *   <li>The job workers are NOT started by the tests and NOT mocked. They run as part of the
+ *       process application (module {@code process-application}) and simulate external services and custom connectors.
  *       The tests verify their effects through the variables they return to the process instance.
  *   <li>The HTTP connector of the rejection task is replaced by the job worker {@code
  *       send-invoice-rejection}.
@@ -51,10 +54,16 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
 @CamundaSpringProcessTest
 public class InvoiceApprovalTest {
 
-  private static final String PROCESS_ID = "Process_InvoiceApproval";
+  private static final String PROCESS_ID = ProcessApplicationDeployment.PROCESS_ID;
 
   @Autowired private CamundaClient client;
   @Autowired private CamundaProcessTestContext processTestContext;
+
+  @BeforeEach
+  void requireProcessApplication() {
+    // the process application owns the BPMN/DMN resources, the tests don't deploy them
+    ProcessApplicationDeployment.requireDeployed(client);
+  }
 
   @DisplayName("Happy path through the process")
   @Test
