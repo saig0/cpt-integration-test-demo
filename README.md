@@ -20,16 +20,9 @@ verify the deployed process and invoke the real workers instead of mocking them.
 ```
 
 The process is an invoice approval process with the DMN decision `auto-approve-invoice`. It is based on the invoice example of the
-[CPT example project](https://github.com/camunda/camunda/tree/main/testing/camunda-process-test-example). The *Send invoice rejection* task is a service task with
-the job type `send-invoice-rejection`, handled by a job worker (instead of an HTTP connector).
+[CPT example project](https://github.com/camunda/camunda/tree/main/testing/camunda-process-test-example). 
 
-| Element                        | Job type / decision         | Handled by                      |
-| ------------------------------ | --------------------------- | ------------------------------- |
-| Auto-approve invoice           | DMN `auto-approve-invoice`  | the cluster (deployed by the process application) |
-| Archive invoice                | `archive-invoice`           | `process-application` (fails for `…LEGACY-ERROR…` IDs) |
-| Add invoice to accounting      | `add-invoice-to-accounting` | `process-application`                       |
-| Send invoice rejection         | `send-invoice-rejection`    | `process-application` (replaces the connector) |
-| Approve / manually archive     | user tasks                  | the tests (`completeUserTask`)  |
+![Process diagram](docs/invoice-approval-process.png)
 
 Tests in `process-tests/src/test`:
 
@@ -41,31 +34,17 @@ Tests in `process-tests/src/test`:
 
 ## How it works
 
-```
- ┌──────────────────────┐   start instances, assert,    ┌─────────────────────────┐
- │ process-tests (JUnit)│   complete user tasks,        │                         │
- │  CPT, runtime-mode:  │ ────────────────────────────► │  Camunda 8 cluster      │
- │  remote              │   increase time               │  C8 Run (default)       │
- └──────────────────────┘                               │  or SaaS                │
- ┌──────────────────────┐   deploy BPMN/DMN             │                         │
- │ process-application  │ ────────────────────────────► │                         │
- │  resources + workers │ ◄──────────────────────────── │                         │
- └──────────────────────┘   activate / complete jobs    └─────────────────────────┘
-```
-
 * **Remote runtime.** `camunda.process-test.runtime-mode: remote` makes CPT connect to the running cluster instead of
   starting a Testcontainers runtime. No Docker is needed. See
   [`process-tests/src/test/resources/application.yaml`](process-tests/src/test/resources/application.yaml).
 * **The process application owns the resources.** The BPMN and DMN live in `process-application` and are deployed by it at startup
-  (`@Deployment`). **The tests don't deploy anything**: they verify the process as deployed. (If the resources are missing, the process
-  instance creation is rejected with a clear `NOT_FOUND` error.) That way a test run can't override what the process application has deployed.
+  (`@Deployment`). **The tests don't deploy anything**: they verify the process as deployed. That way a test run can't override what the process application has deployed.
 * **Workers are external.** The tests neither start nor mock the job workers
-  The tests assert the *effects*: the process path and the
-  variables the workers return (`archiveReference`, `accountingEntryId`, `rejectionNotificationId`).
-* **No cleanup, isolation by scoping.** CPT's default cleanup purges **all** data of the cluster after each test
-  (`POST /actuator/cluster/purge`), including the resources that the process application deployed — the tests would fail from the second test on.
+  The tests assert the *effects*: the process path and the variables the workers return.
+* **No cleanup, isolation by scoping.** CPT's default cleanup purges **all** data of the cluster after each test, 
+  including the resources that the process application deployed — the tests would fail from the second test on.
   The tests therefore run with `camunda.process-test.data-deletion-mode: none` and rely on CPT's start-time scoping (8.10+): the queries only see
-  the data that was created after the test case started, so plain selectors such as `byElementId("UserTask_ApproveInvoice")` are enough.
+  the data that was created after the test case started.
 * **Clock.** `increaseTime(Duration.ofDays(5))` (timer tests) needs a cluster with a controllable clock: CPT 8.10 manipulates the clock through the
   management API (port 9600). The timer tests are **off by default** (`demo.clock-manipulation.enabled=false`): together with `data-deletion-mode: none` they leave
   the cluster unhealthy for the next test (camunda/camunda#62541, not fixed in 8.10), and the purge is not an option (it deletes the deployed resources).
@@ -74,12 +53,12 @@ Tests in `process-tests/src/test`:
 ## Prerequisites
 
 * Java 21 and Maven 3.9+
-* The [c8 CLI](https://github.com/camunda/c8ctl) (`c8`, also available as `c8ctl`) to install and run C8 Run: `npm install -g @camunda8/cli`
+* The [c8 CLI](https://github.com/camunda/c8ctl) to install and run C8 Run: `npm install -g @camunda8/cli`
 * For SaaS: a cluster and an API client (see [Run on Camunda 8 SaaS](#run-on-camunda-8-saas))
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster** with the c8 CLI (`c8` is the short name of `c8ctl`). It downloads the version on the first start. CPT 8.10 needs the clock control enabled:
+**1. Start the cluster** with the c8 CLI. It downloads the version on the first start. CPT 8.10 needs the clock control enabled:
 
 ```bash
 CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8 cluster start 8.10.9
@@ -101,21 +80,22 @@ mvn -pl process-tests test
 ```
 
 19 tests run and pass (5 Java process tests with the timer test skipped, 7 decision rows, 9 JSON test cases with the timer test case skipped).
-A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/` (`report.html`, `report.json`). It covers the data of the test run only (CPT 8.10 limits its queries to the start time of the test case).
 
-Stop the cluster with `c8 cluster stop`.
+A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/report.html`. It
+covers the data of the test run only (CPT limits its queries to the start time of the test case). Open the HTML in a
+browser to see which paths and decision rows were executed.
 
-> ⚠️ **CPT's default is to delete all data of the cluster after every test** — this demo turns it off (it would delete the deployed resources).
-> Don't enable it (`data-deletion-mode: cluster_purge`) and never point the tests at a cluster with data
-> you care about. Use a dedicated test cluster (a separate C8 Run version/instance is enough). **Use the cluster exclusively for CPT:** CPT doesn't
-> support parallel tests, and purge, clock and coverage are cluster-wide. Run one test job at a time per cluster. See
-> [limitations](docs/CAPABILITIES.md#limitations-and-blockers).
+Then, stop the process application and the cluster. 
+
+```bash
+c8 cluster stop
+```
 
 ## Run on Camunda 8 SaaS
 
 SaaS has no management API (port 9600), so CPT can't purge the cluster; the default configuration of this branch already avoids the purge (`data-deletion-mode: none`).
 The `saas` profile increases the assertion timeout and keeps the timer tests off. **Not verified on SaaS** for 8.10 (only 8.11 was): on a cluster with an
-Elasticsearch exporter, do not enable the timer tests (a clock jump delays the exporter, see limitation 10 in the docs).
+Elasticsearch exporter, do not enable the timer tests (a clock jump delays the exporter, see the limitations in [docs/CAPABILITIES.md](docs/CAPABILITIES.md)).
 
 1. In the SaaS console create an API client (Cluster → API) with the scopes `Zeebe`, `Tasklist`, `Operate` (or `Orchestration`).
 2. `cp .env.example .env`, fill in the values (the file is gitignored), and load them: `set -a; . .env; set +a`. For a stage other than production set
@@ -155,4 +135,3 @@ Any property can be overridden on the command line, for example
 | `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` (#62541, not fixed in 8.10). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`, then restart the process application) or restart the cluster. |
 | `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
-| Worker log shows `500 Internal Server Error` while activating jobs | Only when the cluster is purged (not the default of this demo). Harmless, the workers recover. |
