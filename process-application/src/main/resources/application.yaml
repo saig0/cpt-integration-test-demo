@@ -1,8 +1,8 @@
-# The job workers connect to a local Camunda 8 Run by default (see README).
+# The process application connects to a local Camunda 8 Run by default (see README).
 # Use the "saas" profile to connect to Camunda 8 SaaS: SPRING_PROFILES_ACTIVE=saas
 spring:
   application:
-    name: invoice-workers
+    name: invoice-process-application
   main:
     web-application-type: none
 

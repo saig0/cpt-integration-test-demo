@@ -1,9 +1,11 @@
 package io.camunda.demo;
 
+import io.camunda.client.CamundaClient;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 import io.camunda.process.test.api.testCases.TestCase;
 import io.camunda.process.test.api.testCases.TestCaseRunner;
 import io.camunda.process.test.api.testCases.TestCaseSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,7 +16,7 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
  * (InvoiceApprovalJsonTest). InvoiceApprovalTest is the equivalent class that uses the Java API.
  *
  * <p>Differences to the original example: the test cases don't mock the job workers (the external
- * workers handle the jobs, see the workers module), and they assert the variables that the workers
+ * workers handle the jobs, see the process-application module), and they assert the variables that the workers
  * return.
  *
  * <p>JSON test cases have fixed data and select by process definition ID, not by process instance.
@@ -27,12 +29,18 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
 @CamundaSpringProcessTest
 public class InvoiceApprovalJsonTest {
 
+  @Autowired private CamundaClient client;
   @Autowired private TestCaseRunner testCaseRunner;
+
+  @BeforeEach
+  void requireProcessApplication() {
+    ProcessApplicationDeployment.requireDeployed(client);
+  }
 
   @ParameterizedTest
   @TestCaseSource(directory = "/test-cases")
   void shouldPass(final TestCase testCase, final String filename) {
-    // given: the process definitions are deployed by the Spring Boot application
+    // given: the process definitions are deployed by the process application
     // when/then: run and verify the test case
     testCaseRunner.run(testCase);
   }

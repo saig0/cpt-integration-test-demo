@@ -1,4 +1,4 @@
-# Connect the job workers to Camunda 8 SaaS. Provide the credentials as environment variables
+# Connect the process application to Camunda 8 SaaS. Provide the credentials as environment variables
 # (see .env.example). Create an API client with the scope "Zeebe" in the Camunda SaaS console.
 camunda:
   client:

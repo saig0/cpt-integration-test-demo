@@ -12,16 +12,16 @@
   <name>CPT integration test demo</name>
   <description>
     Demo: run Camunda Process Test (CPT) tests against a remote Camunda 8 environment
-    (C8 Run or SaaS) while the job workers run as separate, external applications.
+    (C8 Run or SaaS). The process application (process resources and job workers) runs as a separate application and owns the deployed resources.
   </description>
 
   <modules>
-    <module>workers</module>
+    <module>process-application</module>
     <module>process-tests</module>
   </modules>
 
   <properties>
-    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh) and the job workers. -->
+    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh) and the process application. -->
     <camunda.version>8.11.0-alpha1</camunda.version>
     <!-- The version of the Camunda client and CPT used by the tests (process-tests). It is a snapshot until the next
          8.11 alpha is released: the 8.11.0-alpha1 CPT doesn't use the public clock API yet (merged after the release). -->
