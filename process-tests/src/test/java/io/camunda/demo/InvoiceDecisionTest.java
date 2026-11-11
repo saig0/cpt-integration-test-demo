@@ -6,7 +6,6 @@ import io.camunda.client.CamundaClient;
 import io.camunda.client.api.response.EvaluateDecisionResponse;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -27,11 +26,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 public class InvoiceDecisionTest {
 
   @Autowired private CamundaClient client;
-
-  @BeforeEach
-  void requireProcessApplication() {
-    ProcessApplicationDeployment.requireDeployed(client);
-  }
 
   @CsvSource(
       delimiter = '|',

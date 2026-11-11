@@ -62,8 +62,8 @@ Tests in `process-tests/src/test`:
   starting a Testcontainers runtime. No Docker is needed. See
   [`process-tests/src/test/resources/application.yaml`](process-tests/src/test/resources/application.yaml).
 * **The process application owns the resources.** The BPMN and DMN live in `process-application` and are deployed by it at startup
-  (`@Deployment`). **The tests don't deploy anything**: they only check that the resources are there (`ProcessApplicationDeployment`) and verify the
-  process as deployed. That way a test run can't override what the process application has deployed.
+  (`@Deployment`). **The tests don't deploy anything**: they verify the process as deployed. (If the resources are missing, the process
+  instance creation is rejected with a clear `NOT_FOUND` error.) That way a test run can't override what the process application has deployed.
 * **Workers are external.** The tests neither start nor mock the job workers
   (`camunda.client.worker.defaults.enabled=false`). The tests assert the *effects*: the process path and the
   variables the workers return (`archiveReference`, `accountingEntryId`, `rejectionNotificationId`).
@@ -163,6 +163,6 @@ Any property can be overridden on the command line, for example
 | `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
 | Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT jar or the `8.10`/`8.9` branches: the cluster was started without a controllable clock. Use `scripts/start-c8run.sh`. |
 | `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1 jar (#62541, fixed in the snapshot). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
-| `The process application has not deployed its resources to the cluster` | Start the process application first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
+| `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
 | Worker log shows `500 Internal Server Error` while activating jobs | Only when the cluster is purged (not the default of this demo). Harmless, the workers recover. |

@@ -53,7 +53,7 @@ How to read the claims:
 | Cluster clock controllable (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` or `ZEEBE_CLOCK_CONTROLLED=true`) | ✅ needed | ✅ needed | ✅ needed | ❌ **not needed** (✅ legacy endpoint stayed `403`, timer tests passed) | Only for `increaseTime`/`setTime`. Verified: without it `DELETE /actuator/clock` returns `403 … the clock is immutable`; both variable names work on all three versions. The public clock API of the 8.11 runtime replaces it. |
 | Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | – | 🔎 needed (docs); ❓ not tried | Needed because CPT uses the public clock API. Only relevant when authorizations are enabled. |
 | Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 11 |
-| Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 12 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests only check that the resources exist. |
+| Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 12 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests don't deploy; without the deployment, creating an instance is rejected with a clear error. |
 | Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | `camunda.client.worker.defaults.enabled=false` in the tests. |
 
 ¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
@@ -233,7 +233,9 @@ pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the 
 In an integration scenario the **process application deploys and owns the BPMN/DMN** (here: module `process-application`, `@Deployment` at startup). The tests
 only verify the process. If the tests deployed their own copy (as the CPT example does with `@Deployment` in the test application), every test run would deploy
 resources to the cluster: a changed or stale copy **overrides the version the process application deployed** (a new latest version that other users and the real
-workers run against). The demo's tests therefore **don't deploy**; `ProcessApplicationDeployment` checks that the process and the decision exist and fails fast otherwise.
+workers run against). The demo's tests therefore **don't deploy** and have no extra check: if the process application hasn't deployed the resources, the first command fails at once
+with `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` (✅ the same for the
+Java tests, the JSON test cases and the decision tests: `… no decision found for id …`).
 
 * **The default purge is incompatible with this.** With `data-deletion-mode: cluster_purge` the first test passes, the purge deletes the deployments, and the other tests
   fail (✅ 6 of 7 decision tests: *"no decision found for id 'auto-approve-invoice'"*; the decision definitions on the cluster went from 1 to 0). So the integration setup needs
