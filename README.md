@@ -123,7 +123,7 @@ tests did run, but moving the clock delays the Elasticsearch exporter by the siz
 
 > Status: verified on 8.11 only — against a cluster on the Camunda INT stage (`CAMUNDA_CLUSTER_DOMAIN=ultrawombat.com`, 8.11.0-alpha1) with the
 > snapshot CPT: 19 of 21 tests pass (the 2 timer tests are skipped), also a second run on top of the data of the first. **Don't enable the timer tests on
-> SaaS**: `increaseTime` delays the Elasticsearch exporter by the size of the jump. See limitation in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+> SaaS**: `increaseTime` delays the Elasticsearch exporter by the size of the jump. See the limitations in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 
 ## Configuration reference
 

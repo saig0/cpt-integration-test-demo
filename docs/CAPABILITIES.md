@@ -30,14 +30,14 @@ How to read the claims:
    fails with `Cluster is unhealthy` ([#62541](https://github.com/camunda/camunda/issues/62541) ✅ reproduced). The public clock API ([#66694](https://github.com/camunda/camunda/issues/66694)) fixes it — it is **not in the 8.11.0-alpha1 CPT jar** (✅ it still calls
    `/actuator/clock`), but **in 8.11.0-SNAPSHOT: ✅ all 21 tests pass with `data-deletion-mode: none` and `increaseTime`.**
 5. **SaaS works for everything except the clock (☁️ 8.11).** Against a real SaaS cluster (8.11.0-alpha1, `mode: saas`, external workers on the same
-   cluster, `data-deletion-mode: none`) 19 of 21 tests pass; the 2 timer tests are the exception (see limitation 10). A second run on top of the
+   cluster, `data-deletion-mode: none`) 19 of 21 tests pass; the 2 timer tests are the exception (see limitation 9). A second run on top of the
    data of the first run passes as well (☁️): the start-time isolation kept the runs apart.
-   Don't use `increaseTime` on SaaS: with Elasticsearch it stalled indexing of the cluster (limitation 10; reproduced locally with Elasticsearch).
+   Don't use `increaseTime` on SaaS: with Elasticsearch it stalled indexing of the cluster (limitation 9; reproduced locally with Elasticsearch).
 6. **With the 8.11-SNAPSHOT the whole suite, including the timer tests, ran without the management API and without a
    controllable-clock flag** (✅ local cluster, management port set to a closed port, purge off). That is the best case for a
    shared environment; SaaS itself is still ❓ unverified.
 7. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
-8. **One test run per cluster, exclusively.** CPT doesn't support parallel tests; purge, clock and the coverage report work on the whole cluster (limitation 11). Serialize the CI job and don't share the cluster.
+8. **One test run per cluster, exclusively.** CPT doesn't support parallel tests; purge, clock and the coverage report work on the whole cluster (limitation 10). Serialize the CI job and don't share the cluster.
 9. **Isolation without a purge comes from CPT's start-time scoping (8.10+).** Plain selectors are enough there (✅ 21/21, twice in a row on `main`). 8.9 has no such scoping:
    it needs selectors scoped to the process instance (✅ failed without them).
 
@@ -51,8 +51,8 @@ How to read the claims:
 | Management API (port 9600) reachable | ✅ needed | ✅ needed¹ | ✅ needed¹ | only for the purge² | Purge (all versions) and the clock (≤ alpha1). |
 | Cluster clock controllable (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true`) | ✅ needed | ✅ needed | ✅ needed | ❌ **not needed** (✅ legacy endpoint stayed `403`, timer tests passed) | Only for `increaseTime`/`setTime`. The public clock API of the 8.11 runtime replaces it. |
 | Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | – | 🔎 needed (docs); ❓ not tried | Needed because CPT uses the public clock API. Only relevant when authorizations are enabled. |
-| Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 11 |
-| Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 12 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests don't deploy; without the deployment, creating an instance is rejected with a clear error. |
+| Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 10 |
+| Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 1 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests don't deploy; without the deployment, creating an instance is rejected with a clear error. |
 | Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | The test module contains no workers. |
 
 ¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
@@ -71,14 +71,14 @@ The first four columns ran on a dedicated local C8 Run (the process application 
 | Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | BPMN error from an external worker → error boundary event | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
-| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 ([#23160](https://github.com/camunda/camunda/issues/23160)). 8.11: ☁️ `increaseTime` works, but ❌ stalls Elasticsearch indexing for the size of the jump (limitation 10) |
+| Timer test with `increaseTime(5 days)` | ✅ | ✅ | ✅ | ✅ (also without management API, ✅) | ❌ no clock on SaaS ≤ 8.10 ([#23160](https://github.com/camunda/camunda/issues/23160)). 8.11: ☁️ `increaseTime` works, but ❌ stalls Elasticsearch indexing for the size of the jump (limitation 9) |
 | DMN: deploy, business rule task, evaluate decision, `assertThatDecision` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | JSON test cases (`@TestCaseSource`, `TestCaseRunner`) incl. `ASSERT_VARIABLES`, `EVALUATE_DECISION`, `INCREASE_TIME` | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 passed, ⚠️ fixed data, selectors by definition ID (see 6) |
 | Coverage report (HTML + JSON, BPMN and DMN) per test class | ✅ | ✅ | ✅ | ✅ scoped to the test data (see 6) | ☁️ 8.11: generated, scoped to the test data |
 | Clean slate per test (purge) | ✅ default | ✅ default | ✅ default | ✅ default | ❌ **destructive**; SaaS has no management API, use `data-deletion-mode: none` (☁️ works) |
 | Switch purge off | ❌ no switch (✅ logs `Failed to delete the runtime data, skipping`) | ✅ `data-deletion-mode: none` | ✅ same | ✅ same | needed |
 | Test-case isolation by start time | ❌ (not in the jar) | ✅ source + ✅ warning | ✅ same | ✅ works without management API (clock read via REST; no warning). ☁️ also on SaaS: the second run on leftover data passed | ⚠️ ≤ alpha1: falls back to *off* when the management API is unreachable (✅ warning) |
-| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ [#62541](https://github.com/camunda/camunda/issues/62541) ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot on a local cluster. ☁️ **SaaS / Elasticsearch: ❌ indexing stalls** (limitation 10); H2 (C8 Run): ✅ |
+| Clock + "no purge" together | ✅ n/a (purge always on) | ❌ [#62541](https://github.com/camunda/camunda/issues/62541) ✅ reproduced | ❌ ✅ reproduced (alpha1 jar) | ✅ fixed (public clock API) | ✅ with the 8.11 snapshot on a local cluster. ☁️ **SaaS / Elasticsearch: ❌ indexing stalls** (limitation 9); H2 (C8 Run): ✅ |
 | `mockJobWorker` for a type that real workers also serve | ⚠️ competes, not reliable [#62521](https://github.com/camunda/camunda/issues/62521) ✅ | ⚠️ same| ⚠️ same✅ | ⚠️ same| ⚠️ |
 | `mockChildProcess`, `mockDmnDecision` | 🔎 deploy stub resources | 🔎 | 🔎 | 🔎 | ⚠️ stubs stay on the cluster without purge |
 | Connectors | 🔎 run in the cluster's connector runtime, CPT doesn't start them | 🔎 | 🔎 | 🔎 | 🔎 same |
@@ -89,17 +89,17 @@ The first four columns ran on a dedicated local C8 Run (the process application 
 ### 1. CPT deletes all data of the cluster after each test — ✅ verified
 A process instance started by someone else before the test run was gone afterwards. Deployments, instances, incidents, everything.
 
-* The purge also deletes the **deployed BPMN/DMN** (✅ limitation 12): the process application's deployments are gone after the first test.
+* The purge also deletes the **deployed BPMN/DMN** (✅): the process application's deployments are gone after the first test.
 * 8.9: **no way to switch it off.** If the management API is unreachable, CPT only logs `Failed to delete the runtime data,
   skipping` and carries on (✅), so a "no purge" run is possible by accident (point the address to a closed port, as the 8.9
-  branch does by default, see limitation 12) but it's not a feature.
+  branch does by default) but it's not a feature.
 * 8.10+: `camunda.process-test.data-deletion-mode: none`.
 * Danger: the default monitoring address is `http://localhost:9600`. A mis-configured run can purge an unrelated local cluster.
 
 ### 2. The clock is cluster-wide — ✅ verified
 `increaseTime(5 days)` made the timer of an *unrelated* process instance fire (it completed). On a shared cluster
 every process with a timer, job timeout, message TTL or backoff is affected. Only use clock manipulation on a dedicated test cluster.
-No clock manipulation on SaaS (≤ 8.10, [#23160](https://github.com/camunda/camunda/issues/23160)). With the public clock API (8.11) the clock stays cluster-wide: the effect on other instances is the same. With an Elasticsearch exporter it also delays indexing (limitation 10).
+No clock manipulation on SaaS (≤ 8.10, [#23160](https://github.com/camunda/camunda/issues/23160)). With the public clock API (8.11) the clock stays cluster-wide: the effect on other instances is the same. With an Elasticsearch exporter it also delays indexing (limitation 9).
 
 ### 3. Clock manipulation breaks the next test when the data is not purged (#62541) — ✅ reproduced on 8.10.9 and the 8.11.0-alpha1, ✅ fixed in 8.11.0-SNAPSHOT
 Setting `data-deletion-mode: none` and calling `increaseTime`: the next test fails in `beforeTestMethod` with
@@ -155,7 +155,7 @@ target environment**. With `none` + `clock-reset-enabled: false` + no `increaseT
 Assertions query the secondary storage, which is filled asynchronously. They retry until `camunda.process-test.assertion.timeout`
 (default 10 s). Remote/SaaS needs more (the `saas` profile uses 30 s). ☁️ A suite run on SaaS takes ~1.5-2 min vs. ~45 s locally (JSON tests 33-51 s vs. 23 s).
 
-### 10. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
+### 9. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
 **Symptom.** With the timer tests enabled (`increaseTime(5 days)`, then CPT resets the clock), every following test fails with "No process instance / user task /
 decision instance … found". The engine keeps working (external workers process new instances, the topology is `healthy`), but the **search index receives
 nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newer than the timer test's instance was indexed for 21+ minutes (checked until 12:09Z).
@@ -182,7 +182,7 @@ or earlier after a restart (❓ not tried; no purge on SaaS).
 * The same mechanism may be part of why [#62541](https://github.com/camunda/camunda/issues/62541) showed an unhealthy partition (❓).
 * If a clock test must run on such a cluster: keep the jump small (the delay equals the jump) and make the timer durations in the test configurable.
 
-### 11. No parallel tests: the cluster must be used exclusively by CPT — 🔎 given by the CPT design, consistent with what we measured
+### 10. No parallel tests: the cluster must be used exclusively by CPT — 🔎 given by the CPT design, consistent with what we measured
 CPT doesn't support running tests in parallel, and a remote cluster used for integration tests should belong to CPT **alone** while the tests run:
 * the cleanup (purge) and the clock reset/jump are **cluster-wide**, so one test run disturbs any other test run or person using the cluster (✅ limitation 1 and 2);
 * the assertions are scoped by the *start time of the test case* and by what the test selects, not by "who created the data" — concurrent runs on one cluster see
@@ -209,12 +209,12 @@ pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the 
 
 ### 8.10 (`8.10` branch, 8.10.9 verified)
 
-* In this demo: `data-deletion-mode: none`, timer tests off by default ([#62541](https://github.com/camunda/camunda/issues/62541)), 19 of 21 tests (limitation 12).
+* In this demo: `data-deletion-mode: none`, timer tests off by default ([#62541](https://github.com/camunda/camunda/issues/62541)), 19 of 21 tests.
 * Clock: management API (`/actuator/clock`), needs the controllable-clock flag.
 * Known issues: [#62541](https://github.com/camunda/camunda/issues/62541) (✅ reproduced, won't fix in 8.10; fixed in the 8.11 snapshot), [#62521](https://github.com/camunda/camunda/issues/62521) (open).
 
 ### 8.9 (`8.9` branch, 8.9.28 verified)
 
-* In this demo: closed management API address to avoid the purge, no timer and JSON tests, 14 tests with 3 skipped by design (limitation 12).
+* In this demo: closed management API address to avoid the purge, no timer and JSON tests, 14 tests with 3 skipped by design.
 * Remote runtime supported; clock via management API (flag needed); **purge cannot be switched off**; no start-time isolation (✅ tests
   fail on a dirty cluster without scoped selectors); no `data-deletion-mode`, `clock-reset-enabled`.
