@@ -32,15 +32,15 @@ How to read the claims:
    `/actuator/clock`), but **in 8.11.0-SNAPSHOT: ✅ all 21 tests pass with `data-deletion-mode: none` and `increaseTime`.**
 5. **SaaS works for everything except the clock (☁️ 8.11).** Against a real SaaS cluster (8.11.0-alpha1, `mode: saas`, external workers on the same
    cluster, `data-deletion-mode: none`) 19 of 21 tests pass; the 2 timer tests are the exception (see limitation 10). A second run on top of the
-   data of the first run passes as well (☁️): unique IDs, scoped selectors and the start-time isolation (via `GET /v2/clock`) keep the runs apart.
+   data of the first run passes as well (☁️): unique IDs, instance-scoped selectors and the start-time isolation (via `GET /v2/clock`) kept the runs apart (that run used the instance-scoped selectors; the tests were simplified afterwards, see limitation 6).
    Don't use `increaseTime` on SaaS: with Elasticsearch it stalled indexing of the cluster (limitation 10; reproduced locally with Elasticsearch).
 6. **With the 8.11-SNAPSHOT the whole suite, including the timer tests, ran without the management API and without a
    controllable-clock flag** (✅ local cluster, management port set to a closed port, purge off). That is the best case for a
    shared environment; SaaS itself is still ❓ unverified.
 7. **Don't mix CPT job-worker mocks with real workers for the same job type.** They compete (✅ 5 of 10 jobs went to the mock).
 8. **One test run per cluster, exclusively.** CPT doesn't support parallel tests; purge, clock and the coverage report work on the whole cluster (limitation 11). Serialize the CI job and don't share the cluster.
-9. **Scope everything to the process instance of the test** (✅ failed on 8.9 without it) — the selectors are cluster-wide
-   unless told otherwise.
+9. **Isolation without a purge comes from CPT's start-time scoping (8.10+).** Plain selectors are enough there (✅ 21/21, twice in a row on `main`). 8.9 has no such scoping:
+   it needs selectors scoped to the process instance (✅ failed without them).
 
 ## What a remote run needs
 
@@ -54,7 +54,7 @@ How to read the claims:
 | Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | – | 🔎 needed (docs); ❓ not tried | Needed because CPT uses the public clock API. Only relevant when authorizations are enabled. |
 | Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 11 |
 | Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 12 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests don't deploy; without the deployment, creating an instance is rejected with a clear error. |
-| Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | `camunda.client.worker.defaults.enabled=false` in the tests. |
+| Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | The test module contains no workers. |
 
 ¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
 warning at every test start and disables the start-time isolation (✅ see limitation 6).
@@ -135,23 +135,22 @@ out of the test JVM.
 to the mock, 5 to the real worker. On a remote environment with real workers/connectors, a job type is served either by the
 real worker **or** by a mock — not both.
 
-* Replacing the HTTP connector by a worker (this demo) removes the need for the `mockJobWorker("io.camunda:http-json:1")` of the original
-  example. If you do want to mock the connector on a shared cluster, you must stop the connector runtime for that
+* Replacing the HTTP connector by a worker (this demo) means no connector job has to be mocked (`mockJobWorker("io.camunda:http-json:1")`). If you do want to mock the connector on a shared cluster, you must stop the connector runtime for that
   job type (impossible on SaaS), or add a test-specific BPMN variant.
 * Idea for a feature: scope a mock to the process instances of the test (job filter by instance key / tag).
 
-### 6. Selectors are cluster-wide; test isolation needs scoping — ✅ verified
-Without purge, `assertThatUserTask(byElementId("UserTask_ApproveInvoice"))` matched a task from an earlier test
-(*"Expected … to be created, but was completed"*, 8.9.28) — and `completeUserTask(byElementId(…))` could complete
-a stranger's task. Rules for a shared cluster, all implemented in this demo:
+### 6. Isolation without a purge: start-time scoping (8.10+), instance-scoped selectors (8.9) — ✅ verified
+Without a purge, the data of earlier runs and tests stays on the cluster, and selectors like `byElementId("UserTask_ApproveInvoice")` could match it.
 
-* unique business data per test (invoice ID), *and*
-* selectors scoped to the process instance: `byElementId("…", processInstanceKey)`, `assertThatProcessInstance(instance)`.
-
-8.10+ additionally limits the queries to data created after the test case started (🔎 `testCaseStartTime`; absent
-in the 8.9.28 jar). In 8.10 and the 8.11.0-alpha1 jar that scoping reads the cluster time from the management API; if it can't,
-CPT logs *"Test case isolation by start time will be disabled for this test case"* (✅) and you depend on the rules above.
-The 8.11 snapshot reads the time through the public clock API and keeps the isolation without the management API (✅ no warning).
+* **8.10+:** CPT limits its queries (assertions, utilities such as `completeUserTask`, the coverage report) to the data created after the test case started
+  (🔎 `testCaseStartTime`). **Plain selectors are enough:** the tests of `main` use `byElementId("UserTask_ApproveInvoice")` and pass 21/21, twice in a row on the same
+  cluster without purge (✅ the second run starts with the data of the first).
+* In 8.10 and the 8.11.0-alpha1 jar, CPT reads the cluster time for that through the management API; if it can't, it logs *"Test case isolation by start time will be
+  disabled for this test case"* (✅) and the queries are cluster-wide again. Then instance-scoped selectors are needed (`byElementId("…", processInstanceKey)`).
+  The 8.11 snapshot reads the time through the public clock API and keeps the isolation without the management API (✅ no warning).
+* **8.9:** no start-time scoping (absent in the 8.9.28 jar). Without a purge, `assertThatUserTask(byElementId("UserTask_ApproveInvoice"))` matched a task from an earlier test
+  (*"Expected … to be created, but was completed"*, ✅) — and `completeUserTask(byElementId(…))` could complete a stranger's task. The `8.9` branch scopes the selectors to the
+  process instance and uses unique invoice IDs.
 
 **The coverage report uses the same scoping** (✅ 8.11 snapshot, local and ☁️ SaaS): CPT writes `report.html` and `report.json` (to `target/coverage-report`, plus a summary per
 test class in the log) from the data of the test run. Proof: with 20 process instances left on the cluster (`none`), a run of only the decision tests produced a
@@ -227,7 +226,7 @@ CPT doesn't support running tests in parallel, and a remote cluster used for int
 
 Consequences for CI (e.g. GitLab): run the CPT job **serialized** per cluster (for example a `resource_group`), one cluster per pipeline/branch if pipelines must run concurrently, and
 don't use that cluster for manual/acceptance testing at the same time. This also settles the "shared QA cluster" question of the issue: *shared with people or other
-pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the limits above (`none`, unique IDs, scoped selectors, no clock) on a cluster that nobody else uses at that moment.
+pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the limits above (`none`, start-time scoping or instance-scoped selectors, no clock) on a cluster that nobody else uses at that moment.
 
 ### 12. Who owns the process resources: the process application, not the tests — ✅ verified (8.9, 8.10, 8.11)
 In an integration scenario the **process application deploys and owns the BPMN/DMN** (here: module `process-application`, `@Deployment` at startup). The tests
