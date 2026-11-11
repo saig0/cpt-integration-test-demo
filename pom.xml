@@ -21,7 +21,7 @@
   </modules>
 
   <properties>
-    <!-- The Camunda version of this branch: C8 Run (scripts/start-c8run.sh) and the process application. -->
+    <!-- The Camunda version of this branch: C8 Run (`c8 cluster start`) and the process application. -->
     <camunda.version>8.11.0-alpha1</camunda.version>
     <!-- The version of the Camunda client and CPT used by the tests (process-tests). It is a snapshot until the next
          8.11 alpha is released: the 8.11.0-alpha1 CPT doesn't use the public clock API yet (merged after the release). -->

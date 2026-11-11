@@ -16,7 +16,6 @@ verify the deployed process and invoke the real workers instead of mocking them.
 .
 ├── process-application/  Spring Boot app: owns and deploys the BPMN and DMN, hosts the job workers (the "external services"). Started independently.
 ├── process-tests/        CPT tests (Java + JSON). Connects to a remote cluster. No process resources and no job workers inside.
-├── scripts/          start-c8run.sh: start C8 Run (with a controllable clock for CPT ≤ 8.10)
 ├── docs/             Capabilities, limitations and version differences
 └── .env.example      SaaS credentials template
 ```
@@ -80,20 +79,19 @@ Tests in `process-tests/src/test`:
 ## Prerequisites
 
 * Java 21 and Maven 3.9+
-* [`c8ctl`](https://github.com/camunda/c8ctl) (Camunda 8 CLI) to install and run C8 Run: `npm install -g @camunda8/cli`
+* The [c8 CLI](https://github.com/camunda/c8ctl) (`c8`, also available as `c8ctl`) to install and run C8 Run: `npm install -g @camunda8/cli`
 * For SaaS: a cluster and an API client (see [Run on Camunda 8 SaaS](#run-on-camunda-8-saas))
 
 ## Run on a local C8 Run (default)
 
-**1. Start the cluster.** The script starts the version of `camunda.version` (`8.11.0-alpha1` on this branch). `c8ctl` downloads it if needed.
+**1. Start the cluster** with the c8 CLI (`c8` is the short name of `c8ctl`). It downloads the version on the first start.
 
 ```bash
-scripts/start-c8run.sh
+c8 cluster start 8.11.0-alpha1
 ```
 
-The script also makes the clock controllable (and verifies it). With the CPT snapshot that is **not needed** — a plain
-`c8ctl cluster start 8.11.0-alpha1` works. It is needed with the 8.11.0-alpha1 CPT jar and on the `8.10`/`8.9` branches
-(`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8ctl cluster start <version>`).
+No further setup is needed on this branch: CPT 8.11 changes the clock through the public clock API of the cluster. (CPT ≤ 8.10 and the 8.11.0-alpha1 jar
+use the management API and need `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` in the environment of the start command, see the `8.10` and `8.9` branches.)
 
 **2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs.
 
@@ -110,7 +108,7 @@ mvn -pl process-tests test
 All 21 tests pass (5 Java process tests, 7 decision rows, 9 JSON test cases). The timer tests move the cluster clock.
 A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/` (`report.html`, `report.json`). It covers the data of the test run only (CPT limits its queries to the start time of the test case).
 
-Stop the cluster with `c8ctl cluster stop`.
+Stop the cluster with `c8 cluster stop`.
 
 > ⚠️ **CPT's default is to delete all data of the cluster after every test** — this demo turns it off (it would delete the deployed resources).
 > Don't enable it (`data-deletion-mode: cluster_purge`) and never point the tests at a cluster with data
@@ -160,8 +158,8 @@ Any property can be overridden on the command line, for example
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
-| Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT jar or the `8.10`/`8.9` branches: the cluster was started without a controllable clock. Use `scripts/start-c8run.sh`. |
+| `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8 cluster status`. |
+| Timer test fails: *clock is immutable* / 403 | Only with the 8.11.0-alpha1 CPT jar or CPT ≤ 8.10 (the `8.10`/`8.9` branches): the cluster was started without `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true`. Restart it with the variable. |
 | `Cluster is unhealthy` before a test | Known issue after `increaseTime` with `data-deletion-mode=none` and CPT ≤ 8.10 / the alpha1 jar (#62541, fixed in the snapshot). Reset the clock (`curl -X DELETE localhost:9600/actuator/clock`), purge (`curl -X POST localhost:9600/actuator/cluster/purge`) or restart the cluster. |
 | `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
