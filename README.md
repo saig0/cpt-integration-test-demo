@@ -20,12 +20,9 @@ verify the deployed process and invoke the real workers instead of mocking them.
 └── .env.example      SaaS credentials template
 ```
 
-The process is the invoice approval example from the CPT example project
-([`InvoiceApprovalTest`](https://github.com/camunda/camunda/blob/09bdbbc1b704ef96ecca0e192cc9c7b46249c465/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceApprovalTest.java),
-[`InvoiceDecisionTest`](https://github.com/camunda/camunda/blob/09bdbbc1b704ef96ecca0e192cc9c7b46249c465/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceDecisionTest.java),
-[`InvoiceApprovalJsonTest`](https://github.com/camunda/camunda/blob/96e0c444f3c4dcddcc94c327618b4130f31ff57e/testing/camunda-process-test-example/src/test/java/io/camunda/InvoiceApprovalJsonTest.java))
-with its BPMN and the DMN `auto-approve-invoice`. The only change to the model: the *Send invoice rejection* task is no
-longer an HTTP JSON connector, but a plain service task with the job type `send-invoice-rejection`, handled by a job worker.
+The process is an invoice approval process with the DMN decision `auto-approve-invoice`. It is based on the invoice example of the
+[CPT example project](https://github.com/camunda/camunda/tree/main/testing/camunda-process-test-example). The *Send invoice rejection* task is a service task with
+the job type `send-invoice-rejection`, handled by a job worker (instead of an HTTP connector).
 
 | Element                        | Job type / decision         | Handled by                      |
 | ------------------------------ | --------------------------- | ------------------------------- |
@@ -64,12 +61,12 @@ Tests in `process-tests/src/test`:
   (`@Deployment`). **The tests don't deploy anything**: they verify the process as deployed. (If the resources are missing, the process
   instance creation is rejected with a clear `NOT_FOUND` error.) That way a test run can't override what the process application has deployed.
 * **Workers are external.** The tests neither start nor mock the job workers
-  (`camunda.client.worker.defaults.enabled=false`). The tests assert the *effects*: the process path and the
+  The tests assert the *effects*: the process path and the
   variables the workers return (`archiveReference`, `accountingEntryId`, `rejectionNotificationId`).
 * **No cleanup, isolation by scoping.** CPT's default cleanup purges **all** data of the cluster after each test
   (`POST /actuator/cluster/purge`), including the resources that the process application deployed — the tests would fail from the second test on.
-  The tests therefore run with `camunda.process-test.data-deletion-mode: none` and isolate themselves with a unique invoice ID per test,
-  selectors that are scoped to the started process instance, and CPT's start-time scoping (8.10+).
+  The tests therefore run with `camunda.process-test.data-deletion-mode: none` and rely on CPT's start-time scoping (8.10+): the queries only see
+  the data that was created after the test case started, so plain selectors such as `byElementId("UserTask_ApproveInvoice")` are enough.
 * **Clock.** `increaseTime(Duration.ofDays(5))` (timer tests) uses the public clock API of the cluster (`/v2/clock`) with CPT 8.11.
   CPT ≤ 8.10 (and the 8.11.0-alpha1 jar) use the management API and need a cluster with a controllable clock instead. The timer
   tests are skipped for SaaS (`demo.clock-manipulation.enabled=false`), because it is not verified there.
