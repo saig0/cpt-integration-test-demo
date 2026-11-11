@@ -1,15 +1,11 @@
 # CPT integration test demo
 
-Demo for [camunda/camunda#64034](https://github.com/camunda/camunda/issues/64034) — *"I can run process
-integration tests on a remote environment"*.
+Demo for running [Camunda Process Test (CPT)](https://docs.camunda.io/docs/apis-tools/testing/getting-started/)
+tests against an **already running Camunda 8 cluster**, while the **job workers run as separate applications**. It
+mimics the setup of an integration environment in which external services and custom
+connectors are deployed independently and the process tests invoke them instead of mocking them.
 
-It shows how to run [Camunda Process Test (CPT)](https://docs.camunda.io/docs/apis-tools/testing/getting-started/)
-tests against an **already running Camunda 8 cluster** (local C8 Run by default, Camunda 8 SaaS as an
-alternative), while the **job workers run as separate applications** — like the external services and custom
-connectors of a real system.
-
-> **Branch `main` — C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`.** The snapshot contains the public clock API, which was merged
-> after the 8.11.0-alpha1 release. It is a moving target until the next alpha is released (`cpt.version` in the root `pom.xml`). Variations for the other versions live in the branches
+> **Branch `main` — C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`.** Variations for the other versions live in the branches
 > [`8.10`](../../tree/8.10) and [`8.9`](../../tree/8.9). What works in which version, the limitations and the
 > recommended next steps are collected in **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
