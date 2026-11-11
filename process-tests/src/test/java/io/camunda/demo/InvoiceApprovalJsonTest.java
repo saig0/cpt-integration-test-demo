@@ -19,10 +19,14 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
  * workers handle the jobs, see the process-application module), and they assert the variables that the workers
  * return.
  *
+ * <p>The class is disabled with {@code demo.json-tests.enabled=false} (CPT 8.9: no start-time
+ * isolation and no way to switch off the cleanup, see application.yaml of the 8.9 branch).
+ *
  * <p>JSON test cases have fixed data and select by process definition ID, not by process instance.
  * They rely on the cleanup between the tests (C8 Run), and are less suited for a shared cluster than
  * the Java tests.
  */
+@EnabledIf(expression = "${demo.json-tests.enabled:true}", loadContext = true)
 @SpringBootTest(
     classes = TestApplication.class,
     properties = "camunda.client.worker.defaults.enabled=false")
