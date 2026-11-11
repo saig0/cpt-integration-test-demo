@@ -61,8 +61,8 @@ Tests in `process-tests/src/test`:
   starting a Testcontainers runtime. No Docker is needed. See
   [`process-tests/src/test/resources/application.yaml`](process-tests/src/test/resources/application.yaml).
 * **The process application owns the resources.** The BPMN and DMN live in `process-application` and are deployed by it at startup
-  (`@Deployment`). **The tests don't deploy anything**: they only check that the resources are there (`ProcessApplicationDeployment`) and verify the
-  process as deployed. That way a test run can't override what the process application has deployed.
+  (`@Deployment`). **The tests don't deploy anything**: they verify the process as deployed. (If the resources are missing, the process
+  instance creation is rejected with a clear `NOT_FOUND` error.) That way a test run can't override what the process application has deployed.
 * **Workers are external.** The tests neither start nor mock the job workers
   (`camunda.client.worker.defaults.enabled=false`). The tests assert the *effects*: the process path and the
   variables the workers return (`archiveReference`, `accountingEntryId`, `rejectionNotificationId`).
@@ -154,6 +154,6 @@ Any property can be overridden on the command line, for example
 | Symptom | Cause / fix |
 | --- | --- |
 | `Failed to connect to remote Camunda runtime` | The cluster is not running or not ready, or the addresses are wrong. Check `c8ctl cluster status`. |
-| `The process application has not deployed its resources to the cluster` | Start the process application first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
+| `Command 'CREATE' rejected with code 'NOT_FOUND': Expected to find process definition with process ID 'Process_InvoiceApproval', but none found` | The process application has not deployed the resources. Start it first (it deploys the BPMN/DMN). Also happens after a purge of the cluster: restart the process application. |
 | Assertions time out waiting for a step | The process application (workers) is not running, or runs against another cluster. Check its log. |
 | Worker log shows `500 Internal Server Error` while activating jobs | Only when the cluster is purged (not the default of this demo). Harmless, the workers recover. |

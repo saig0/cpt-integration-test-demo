@@ -1,11 +1,9 @@
 package io.camunda.demo;
 
-import io.camunda.client.CamundaClient;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 import io.camunda.process.test.api.testCases.TestCase;
 import io.camunda.process.test.api.testCases.TestCaseRunner;
 import io.camunda.process.test.api.testCases.TestCaseSource;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,13 +31,7 @@ import org.springframework.test.context.junit.jupiter.EnabledIf;
 @CamundaSpringProcessTest
 public class InvoiceApprovalJsonTest {
 
-  @Autowired private CamundaClient client;
   @Autowired private TestCaseRunner testCaseRunner;
-
-  @BeforeEach
-  void requireProcessApplication() {
-    ProcessApplicationDeployment.requireDeployed(client);
-  }
 
   @ParameterizedTest
   @TestCaseSource(directory = "/test-cases")
