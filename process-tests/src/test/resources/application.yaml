@@ -26,7 +26,10 @@ camunda:
 
 demo:
   clock-manipulation:
-    enabled: true
+    # Off by default on 8.10: increaseTime together with data-deletion-mode=none leaves the cluster unhealthy for
+    # the next test (camunda/camunda#62541, not fixed in 8.10). A purge would fix that, but it also deletes the resources
+    # that the process application deployed. Set to true only to experiment (then restart/purge the cluster).
+    enabled: false
 
 logging:
   level:
