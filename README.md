@@ -8,6 +8,8 @@ verify the deployed process and invoke the real workers instead of mocking them.
 
 > **Branch `8.9` — Camunda `8.9.28`.** The other versions live in the branches [`main`](../../tree/main) (C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`) and [`8.10`](../../tree/8.10) (`8.10.9`). What works in which version, the limitations and the
 > recommended next steps are collected in **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
+>
+> How to set it up (cluster, process application, test project, configuration) — one blueprint per version: **[8.11](docs/blueprint-8.11.md)**, **[8.10](docs/blueprint-8.10.md)**, **[8.9](docs/blueprint-8.9.md)**.
 
 ## What is in here
 
@@ -15,7 +17,7 @@ verify the deployed process and invoke the real workers instead of mocking them.
 .
 ├── process-application/  Spring Boot app: owns and deploys the BPMN and DMN, hosts the job workers (the "external services"). Started independently.
 ├── process-tests/        CPT tests (Java + JSON). Connects to a remote cluster. No process resources and no job workers inside.
-├── docs/             Capabilities, limitations and version differences
+├── docs/             Capabilities, limitations and version differences, a blueprint per version
 └── .env.example      SaaS credentials template
 ```
 
@@ -80,7 +82,7 @@ mvn -pl process-application spring-boot:run
 mvn -pl process-tests test
 ```
 
-14 tests run and pass (4 Java process tests, 7 decision rows; the timer test and the 9 JSON test cases are skipped).
+11 tests run and pass (4 Java process tests, 7 decision rows); 3 are skipped by design (the timer test and the JSON test cases).
 
 A coverage report (HTML and JSON, BPMN and DMN) is written to `process-tests/target/coverage-report/report.html`. Open the HTML in a
 browser to see which paths and decision rows were executed. CPT 8.9 has no start-time scoping: on a cluster that is not purged the report may include the data of earlier runs.

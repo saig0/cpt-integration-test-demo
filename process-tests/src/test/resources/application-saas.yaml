@@ -1,5 +1,5 @@
 # Run the tests against Camunda 8 SaaS: mvn test -Psaas (credentials from environment variables,
-# see .env.example). Create an API client with the scopes "Zeebe", "Tasklist" and "Operate" (8.9: "Zeebe")
+# see .env.example). Create an API client with the scope "Orchestration Cluster API"
 # in the Camunda SaaS console.
 camunda:
   process-test:

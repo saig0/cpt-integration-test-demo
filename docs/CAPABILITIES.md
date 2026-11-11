@@ -1,6 +1,6 @@
 # Running CPT tests on a remote environment — capabilities, limitations, version differences
 
-State: **2026-11-10**.
+State: **2026-11-10**. How to set it up: the blueprints [8.11](blueprint-8.11.md), [8.10](blueprint-8.10.md) and [8.9](blueprint-8.9.md).
 Versions: CPT / C8 Run **8.9.28**, **8.10.9**, **8.11.0-alpha1**. For 8.11 the demo also uses the **CPT `8.11.0-SNAPSHOT`** (build of 2026-11-10,
 including the public clock API) against C8 Run 8.11.0-alpha1, until the next alpha is released. All verified with this demo.
 Below, "8.11-alpha1" means the released alpha1 CPT, "8.11-SNAPSHOT" the snapshot.
