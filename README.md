@@ -8,6 +8,8 @@ verify the deployed process and invoke the real workers instead of mocking them.
 
 > **Branch `8.10` — Camunda `8.10.9`.** The other versions live in the branches [`main`](../../tree/main) (C8 Run `8.11.0-alpha1` with CPT `8.11.0-SNAPSHOT`) and [`8.9`](../../tree/8.9) (`8.9.28`). What works in which version, the limitations and the
 > recommended next steps are collected in **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
+>
+> How to set it up (cluster, process application, test project, configuration) — one blueprint per version: **[8.11](docs/blueprint-8.11.md)**, **[8.10](docs/blueprint-8.10.md)**, **[8.9](docs/blueprint-8.9.md)**.
 
 ## What is in here
 
@@ -15,7 +17,7 @@ verify the deployed process and invoke the real workers instead of mocking them.
 .
 ├── process-application/  Spring Boot app: owns and deploys the BPMN and DMN, hosts the job workers (the "external services"). Started independently.
 ├── process-tests/        CPT tests (Java + JSON). Connects to a remote cluster. No process resources and no job workers inside.
-├── docs/             Capabilities, limitations and version differences
+├── docs/             Capabilities, limitations and version differences, a blueprint per version
 └── .env.example      SaaS credentials template
 ```
 

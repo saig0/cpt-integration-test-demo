@@ -1,5 +1,5 @@
 # Connect the process application to Camunda 8 SaaS. Provide the credentials as environment variables
-# (see .env.example). Create an API client with the scope "Zeebe" in the Camunda SaaS console.
+# (see .env.example). Create an API client with the scope "Orchestration Cluster API" in the Camunda SaaS console.
 camunda:
   client:
     mode: saas

@@ -1,12 +1,12 @@
 # Run the tests against Camunda 8 SaaS: mvn test -Psaas (credentials from environment variables,
-# see .env.example). Create an API client with the scopes "Zeebe", "Tasklist" and "Operate" (8.9: "Zeebe")
+# see .env.example). Create an API client with the scope "Orchestration Cluster API"
 # in the Camunda SaaS console.
 camunda:
   process-test:
     runtime-mode: remote
     # SaaS doesn't expose the management API (port 9600) that CPT uses to purge the cluster.
-    # Don't delete the data between the tests (requires CPT 8.10+). The tests are isolated by using
-    # unique invoice IDs instead.
+    # Don't delete the data between the tests (requires CPT 8.10+). The tests are isolated by CPT's
+    # start-time scoping instead.
     data-deletion-mode: none
     # Don't reset the clock after each test: SaaS has no controllable clock.
     clock-reset-enabled: false
