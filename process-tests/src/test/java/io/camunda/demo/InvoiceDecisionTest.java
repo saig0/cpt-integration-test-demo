@@ -13,15 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
- * Tests the DMN decision "auto-approve-invoice" as deployed by the process application on the remote cluster. Adapted from the CPT example
- * (InvoiceDecisionTest). The decision is evaluated on its own, without the process.
- *
- * <p>The assertion uses the response of the evaluation, so it is scoped to this evaluation and
- * independent of other decision instances on the cluster.
+ * Tests the DMN decision "auto-approve-invoice", as deployed by the process application, on the
+ * remote cluster. The decision is evaluated on its own, without the process.
  */
-@SpringBootTest(
-    classes = TestApplication.class,
-    properties = "camunda.client.worker.defaults.enabled=false")
+@SpringBootTest(classes = TestApplication.class)
 @CamundaSpringProcessTest
 public class InvoiceDecisionTest {
 
