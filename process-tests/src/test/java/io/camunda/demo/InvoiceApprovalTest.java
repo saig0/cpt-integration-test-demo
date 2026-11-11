@@ -22,34 +22,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit.jupiter.EnabledIf;
 
 /**
- * Process tests for the invoice approval process, adapted from the CPT example (InvoiceApprovalTest
- * in camunda/camunda, testing/camunda-process-test-example).
+ * Process tests for the invoice approval process. They run against a remote cluster (see {@code
+ * application.yaml}). The process application deploys the process and runs the job workers that
+ * simulate the external services and custom connectors. The tests verify the path through the
+ * process and the variables that the workers return.
  *
- * <p>Differences to the original example:
- *
- * <ul>
- *   <li>The tests run against a remote cluster (C8 Run or SaaS), see {@code application.yaml}.
- *   <li>The tests don't deploy the BPMN/DMN. The process application owns and deploys them (module
- *       {@code process-application}); the tests verify the process as it is deployed there.
- *   <li>The job workers are NOT started by the tests and NOT mocked. They run as part of the
- *       process application (module {@code process-application}) and simulate external services and custom connectors.
- *       The tests verify their effects through the variables they return to the process instance.
- *   <li>The HTTP connector of the rejection task is replaced by the job worker {@code
- *       send-invoice-rejection}.
- * </ul>
- *
- * <p>Each test uses a unique invoice ID, and the user task selectors are scoped to the started
- * process instance. That keeps the tests independent on a shared cluster where CPT doesn't delete
- * the data between the tests (SaaS). An unscoped {@code byElementId("UserTask_ApproveInvoice")}
- * could match (and complete!) the user task of another test or process instance.
+ * <p>CPT 8.9 doesn't limit its queries to the start time of the test case, and the cluster isn't
+ * purged between the tests. Each test therefore uses a unique invoice ID, and the user task
+ * selectors are scoped to the started process instance. An unscoped {@code
+ * byElementId("UserTask_ApproveInvoice")} could match (and complete!) the user task of another
+ * test.
  */
-@SpringBootTest(
-    classes = TestApplication.class,
-    properties = {
-      // Don't start job workers in the test JVM. There are none, but be explicit: the workers are
-      // external, and a worker in the test would compete with them.
-      "camunda.client.worker.defaults.enabled=false",
-    })
+@SpringBootTest(classes = TestApplication.class)
 @CamundaSpringProcessTest
 public class InvoiceApprovalTest {
 
