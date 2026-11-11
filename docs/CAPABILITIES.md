@@ -11,7 +11,7 @@ How to read the claims:
 
 | Mark | Meaning |
 | --- | --- |
-| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`, 21 tests: Java, decision and JSON tests; external workers). The 8.11-SNAPSHOT runs against C8 Run 8.11.0-alpha1. C8 Run's default secondary storage is H2 (RDBMS exporter), unlike SaaS and typical self-managed clusters (Elasticsearch). |
+| ✅ **verified** | Run in this demo against a local C8 Run of the same version (`mvn test`: 21 tests on 8.11, 19 run on 8.10, 14 run on 8.9; Java, decision and JSON tests; external workers). Results marked ✅ for the 8.9 timer and JSON tests, and the purge results, were measured in an earlier setup of the demo (the tests deployed the resources and CPT purged the cluster); the demo's current default is described in limitation 12. The 8.11-SNAPSHOT runs against C8 Run 8.11.0-alpha1. C8 Run's default secondary storage is H2 (RDBMS exporter), unlike SaaS and typical self-managed clusters (Elasticsearch). |
 | 🔎 **source** | Derived from the CPT source (tags `8.9.28`, `8.10.9`, `8.11.0-alpha1`, `main`), the released jars or the docs. Not run. |
 | ☁️ **verified on SaaS** | Run against the INT-stage SaaS cluster above (8.11 only). |
 | ❓ **unverified** | Plausible, but not tested — mostly because no SaaS cluster / secured self-managed cluster was available. |
@@ -24,7 +24,8 @@ How to read the claims:
    after every test (`POST /actuator/cluster/purge`) and manipulates the *cluster-wide* clock. Both are fine on a dedicated
    C8 Run, and destructive on a cluster used for manual/acceptance testing.
 3. **8.10+ can switch the cleanup off** (`data-deletion-mode: none`, `clock-reset-enabled: false`). **8.9 cannot** — the
-   customer's 8.9 environment needs an upgrade, a backport, or a dedicated test cluster.
+   customer's 8.9 environment needs an upgrade, a backport, or a dedicated test cluster. **Switching it off is mandatory when the process application owns the
+   deployed resources** (as in this demo): the purge deletes the deployments too (✅ limitation 12).
 4. **Clock manipulation and "no purge" don't mix on 8.10 and in the 8.11.0-alpha1 jar**: after `increaseTime`, the next test
    fails with `Cluster is unhealthy` (#62541, ✅ reproduced). The public clock API (#23160, CPT PR #66862, merged to `main` on
    2026-10-28, after the alpha1 release candidates) fixes it — it is **not in the 8.11.0-alpha1 CPT jar** (✅ it still calls
@@ -52,6 +53,7 @@ How to read the claims:
 | Cluster clock controllable (`CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` or `ZEEBE_CLOCK_CONTROLLED=true`) | ✅ needed | ✅ needed | ✅ needed | ❌ **not needed** (✅ legacy endpoint stayed `403`, timer tests passed) | Only for `increaseTime`/`setTime`. Verified: without it `DELETE /actuator/clock` returns `403 … the clock is immutable`; both variable names work on all three versions. The public clock API of the 8.11 runtime replaces it. |
 | Authorizations on `SYSTEM` (READ, UPDATE) for the CPT user | – | – | – | 🔎 needed (docs); ❓ not tried | Needed because CPT uses the public clock API. Only relevant when authorizations are enabled. |
 | Cluster used **exclusively** by CPT (no parallel test runs, no other work) | needed | needed | needed | needed | see limitation 11 |
+| Process resources deployed by the process application, not by the tests | ✅ needs the workaround of limitation 12 | ✅ with `data-deletion-mode: none` | ✅ same | ✅ same | The tests only check that the resources exist. |
 | Job workers in a separate app | ✅ | ✅ | ✅ | ✅ | `camunda.client.worker.defaults.enabled=false` in the tests. |
 
 ¹ Not needed if `data-deletion-mode: none` **and** `clock-reset-enabled: false` **and** no `increaseTime` — but then CPT logs a
@@ -61,11 +63,11 @@ warning at every test start and disables the start-time isolation (✅ see limit
 
 ## Capability matrix
 
-The first four columns ran on a dedicated local C8 Run (8.11-SNAPSHOT: CPT snapshot against C8 Run 8.11.0-alpha1). Shared/SaaS = a cluster that must not be wiped. SaaS columns are 🔎/❓ only.
+The first four columns ran on a dedicated local C8 Run (the process application deployed the resources, the tests ran twice in a row without purge) (8.11-SNAPSHOT: CPT snapshot against C8 Run 8.11.0-alpha1). Shared/SaaS = a cluster that must not be wiped. SaaS columns are 🔎/❓ only.
 
 | Capability | C8 Run 8.9 | C8 Run 8.10 | 8.11-alpha1 | 8.11-SNAPSHOT | Shared / SaaS |
 | --- | --- | --- | --- | --- | --- |
-| Deploy BPMN (`@Deployment`), start instances | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
+| Process resources deployed by the process application (`@Deployment`), tests start instances | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | Process-instance and user-task assertions | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11, with `assertion.timeout` 30 s |
 | Complete user tasks (`completeUserTask`) | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
 | External job workers do the work, test asserts the result variables | ✅ | ✅ | ✅ | ✅ | ☁️ 8.11 |
@@ -94,9 +96,10 @@ custom connectors).
 A process instance started by someone else before the test run was gone afterwards (`POST /actuator/cluster/purge`,
 all versions). Deployments, instances, incidents, everything.
 
+* The purge also deletes the **deployed BPMN/DMN** (✅ limitation 12): the process application's deployments are gone after the first test.
 * 8.9: **no way to switch it off.** If the management API is unreachable, CPT only logs `Failed to delete the runtime data,
   skipping` and carries on (✅), so a "no purge" run is possible by accident (point the address to a closed port, as the 8.9
-  `saas` profile does) but it's not a feature.
+  branch does by default, see limitation 12) but it's not a feature.
 * 8.10+: `camunda.process-test.data-deletion-mode: none`.
 * Danger: the default monitoring address is `http://localhost:9600`. A mis-configured run can purge an unrelated local cluster.
 * Next step: use a dedicated cluster for CPT, or run with `none` plus the isolation rules below.
@@ -176,7 +179,7 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
   after the next alpha and switch `cpt.version` to the release. Snapshots come from `https://artifacts.camunda.com/artifactory/public`.
 * `mockDmnDecision("auto-approve-invoice", …)` would deploy a stub DMN with the *same* decision ID (🔎). Without purge, it replaces the real
   decision for all later instances. The demo doesn't use it; it evaluates the real decision.
-* JSON test cases (✅ on all three versions): they use fixed data and select by process definition ID (`processDefinitionId`), not by
+* JSON test cases (✅ on 8.10 and 8.11; switched off on the 8.9 branch with `demo.json-tests.enabled=false`): they use fixed data and select by process definition ID (`processDefinitionId`), not by
   instance — so on a shared cluster they depend on the cleanup/start-time isolation, unlike the Java tests. The example's
   `MOCK_JOB_WORKER_*` instructions were dropped (they'd compete with the external workers, limitation 5). The schema for 8.11
   (`…/cpt-test-cases/8.11/schema.json`) is not published yet (404); the files reference the 8.10 schema.
@@ -226,6 +229,25 @@ Consequences for CI (e.g. GitLab): run the CPT job **serialized** per cluster (f
 don't use that cluster for manual/acceptance testing at the same time. This also settles the "shared QA cluster" question of the issue: *shared with people or other
 pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the limits above (`none`, unique IDs, scoped selectors, no clock) on a cluster that nobody else uses at that moment.
 
+### 12. Who owns the process resources: the process application, not the tests — ✅ verified (8.9, 8.10, 8.11)
+In an integration scenario the **process application deploys and owns the BPMN/DMN** (here: module `process-application`, `@Deployment` at startup). The tests
+only verify the process. If the tests deployed their own copy (as the CPT example does with `@Deployment` in the test application), every test run would deploy
+resources to the cluster: a changed or stale copy **overrides the version the process application deployed** (a new latest version that other users and the real
+workers run against). The demo's tests therefore **don't deploy**; `ProcessApplicationDeployment` checks that the process and the decision exist and fails fast otherwise.
+
+* **The default purge is incompatible with this.** With `data-deletion-mode: cluster_purge` the first test passes, the purge deletes the deployments, and the other tests
+  fail (✅ 6 of 7 decision tests: *"no decision found for id 'auto-approve-invoice'"*; the decision definitions on the cluster went from 1 to 0). So the integration setup needs
+  `data-deletion-mode: none` (8.10+) and relies on the isolation rules of limitation 6.
+* **8.9** has no switch. The 8.9 branch points the management API address to a closed port: CPT logs `Failed to delete the runtime data, skipping` and keeps
+  the data (✅ 14 tests, run twice on the same cluster; the deployed version stayed 1). Consequences (by design of this workaround): **no clock manipulation** (it uses the same
+  address) and **no JSON tests** (no start-time isolation; they select by process definition ID and see the data of earlier runs). An upgrade or a backport of
+  `data-deletion-mode` is the real fix.
+* **8.10**: `none` works, but timer tests (`increaseTime`) are off by default: together with `none` they leave the cluster unhealthy (#62541). 19 of 21 tests run
+  (✅ twice on the same cluster).
+* **8.11 (snapshot)**: everything incl. timer tests, 21 of 21 (✅ twice on the same cluster, process version stayed 1).
+* Not chosen: tests that deploy the *same* resources taken from the process application artifact. Identical content creates no new version, but a changed model
+  would still be deployed by the tests, and the purge would still force a redeploy before every test.
+
 ## Version differences
 
 ### 8.11 (`main`: C8 Run 8.11.0-alpha1 + CPT 8.11.0-SNAPSHOT; the alpha1 jar was verified as well)
@@ -245,6 +267,7 @@ pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the 
 
 ### 8.10 (`8.10` branch, 8.10.9 verified)
 
+* In this demo: `data-deletion-mode: none`, timer tests off by default (#62541), 19 of 21 tests (limitation 12).
 * New vs 8.9: `data-deletion-mode` (`CLUSTER_PURGE` | `NONE`), `clock-reset-enabled`, `query-page-limit`, test-case start-time
   isolation, `cluster-secrets` (8.10.6+; ignored with a warning in remote mode), semantic similarity, update-variables utilities.
 * Clock: management API (`/actuator/clock`), needs the controllable-clock flag.
@@ -252,6 +275,7 @@ pipelines* doesn't work reliably — use a dedicated CPT cluster, or accept the 
 
 ### 8.9 (`8.9` branch, 8.9.28 verified)
 
+* In this demo: closed management API address to avoid the purge, no timer and JSON tests, 14 tests with 3 skipped by design (limitation 12).
 * Remote runtime supported; clock via management API (flag needed); **purge cannot be switched off**; no start-time isolation (✅ tests
   fail on a dirty cluster without scoped selectors); no `data-deletion-mode`, `clock-reset-enabled`.
 * Connectors REST address default `8086` and the `camunda.client.*` client properties since 8.9.1.
