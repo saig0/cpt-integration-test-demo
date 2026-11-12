@@ -156,6 +156,8 @@ Assertions query the secondary storage, which is filled asynchronously. They ret
 (default 10 s). Remote/SaaS needs more (the `saas` profile uses 30 s). ☁️ A suite run on SaaS takes ~1.5-2 min vs. ~45 s locally (JSON tests 33-51 s vs. 23 s).
 
 ### 9. A clock jump delays the Elasticsearch exporter by the size of the jump — ✅ reproduced locally with Elasticsearch; ☁️ observed on SaaS (8.11)
+**Reported as [camunda/camunda#69170](https://github.com/camunda/camunda/issues/69170).** Related: [#49858](https://github.com/camunda/camunda/issues/49858) (same code, clock pinned to the past).
+
 **Symptom.** With the timer tests enabled (`increaseTime(5 days)`, then CPT resets the clock), every following test fails with "No process instance / user task /
 decision instance … found". The engine keeps working (external workers process new instances, the topology is `healthy`), but the **search index receives
 nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newer than the timer test's instance was indexed for 21+ minutes (checked until 12:09Z).
@@ -170,10 +172,10 @@ nothing new**. ☁️ On the INT-stage SaaS cluster (8.11.0-alpha1) nothing newe
 | Elasticsearch, +120 s jump, then reset | indexing normal while jumped (1.0 s); **an instance created right after the reset appeared in the index after 121.4 s** — the size of the jump |
 | Elasticsearch, 600 more instances after the stall | ✅ the index caught up (523 of 600 visible) — the **batch-size flush still works**, the **time-based flush does not** |
 
-**Interpretation (❓ not verified in the exporter source).** The exporter flushes its batch on a timer that runs on the broker's clock. A jump forward moves the next
-flush into the future; after the reset the clock goes back, and the next flush is due only when real time reaches the jumped time. Small batches (a test suite)
-stay unflushed until then. With a +5 day jump that means **up to 5 days**. For the SaaS cluster used here the index would then recover around **2026-11-15 11:48Z**,
-or earlier after a restart (❓ not tried; no purge on SaaS).
+**Interpretation (🔎 from reading the `CamundaExporter` source, not debugged).** A flush during the jump sets the exporter's `lastFlushTimestamp` to the jumped time. After the reset,
+`now - lastFlushTimestamp` is negative: the next flush is scheduled `flushDelay + jump` ahead, and the check "has the flush delay elapsed" stays false until real time reaches the jumped time.
+Small batches (a test suite) stay unflushed until then, while the size-based flush doesn't look at the clock and keeps working. With a +5 day jump that means **up to 5 days**. For the SaaS cluster
+used here the index would then recover around **2026-11-15 11:48Z**, or earlier after a restart (❓ not tried; no purge on SaaS).
 
 **Consequences**
 * **Do not manipulate the clock on any cluster with an Elasticsearch/OpenSearch exporter that you cannot restart quickly: SaaS and probably every self-managed
