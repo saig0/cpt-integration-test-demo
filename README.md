@@ -127,6 +127,20 @@ tests did run, but moving the clock delays the Elasticsearch exporter by the siz
 > snapshot CPT: 19 of 21 tests pass (the 2 timer tests are skipped), also a second run on top of the data of the first. **Don't enable the timer tests on
 > SaaS**: `increaseTime` delays the Elasticsearch exporter by the size of the jump. See the limitations in [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 
+## Continuous integration
+
+The workflow [`.github/workflows/test.yml`](.github/workflows/test.yml) runs the tests of this branch (8.11) on pull requests and on pushes to `main`.
+You can also start it manually (*Actions → Process tests → Run workflow*). It does what the steps above do on a fresh runner: it installs the c8 CLI, starts
+C8 Run `8.11.0-alpha1`, starts the process application in the background and runs the tests. Each run has its own cluster, so runs don't disturb each other.
+
+Artifacts of a run (also when the tests fail):
+
+| Artifact | Content |
+| --- | --- |
+| `test-results` | The surefire reports (XML, text, and the test output per class as `*-output.txt`) and the Maven log. |
+| `coverage-report` | The CPT coverage report (`report.html`, `report.json`). |
+| `logs` | The logs of the process application and of C8 Run, for troubleshooting. |
+
 ## Configuration reference
 
 | What | Where |

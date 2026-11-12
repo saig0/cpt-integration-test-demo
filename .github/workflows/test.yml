@@ -1,0 +1,111 @@
+name: Process tests
+
+# Runs the CPT process tests of branch `main` (C8 Run 8.11.0-alpha1 + CPT 8.11.0-SNAPSHOT) against a local C8 Run
+# that is started with the c8 CLI. The process application (BPMN/DMN + job workers) runs next to it, as in the README.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# CPT needs the cluster exclusively. Each run has its own cluster on its own runner, so runs don't disturb each other.
+# Cancel outdated runs of the same pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # The Camunda version of this branch (`camunda.version` in the root pom): C8 Run and the process application.
+  C8_VERSION: 8.11.0-alpha1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  process-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the c8 CLI
+        run: npm install -g @camunda8/cli
+
+      - name: Start C8 Run
+        # Returns when the cluster is healthy.
+        run: c8 cluster start "$C8_VERSION"
+
+      - name: Start the process application
+        # It deploys the BPMN/DMN and runs the job workers. It keeps running in the background while the tests run.
+        run: |
+          nohup mvn -B -ntp -pl process-application spring-boot:run > process-application.log 2>&1 &
+          echo $! > process-application.pid
+          for i in $(seq 1 120); do
+            if grep -q "Started InvoiceProcessApplication" process-application.log; then
+              echo "The process application is running."
+              exit 0
+            fi
+            if ! kill -0 "$(cat process-application.pid)" 2>/dev/null; then
+              echo "The process application stopped:"; tail -n 50 process-application.log
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "The process application didn't start in time:"; tail -n 50 process-application.log
+          exit 1
+
+      - name: Run the process tests
+        # The output of each test class goes to a file in surefire-reports (*-output.txt) next to the test results.
+        run: |
+          mvn -B -ntp -pl process-tests test -Dmaven.test.redirectTestOutputToFile=true 2>&1 | tee process-tests.log
+
+      - name: Upload the test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            process-tests/target/surefire-reports/
+            process-tests.log
+          if-no-files-found: warn
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: process-tests/target/coverage-report/
+          if-no-files-found: warn
+
+      - name: Stop the process application and C8 Run
+        if: always()
+        run: |
+          if [ -f process-application.pid ]; then pkill -P "$(cat process-application.pid)" || true; kill "$(cat process-application.pid)" || true; fi
+          c8 cluster stop || true
+
+      - name: Upload the logs of the process application and C8 Run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            process-application.log
+            /home/runner/.cache/c8run/c8run-${{ env.C8_VERSION }}/*/log/*.log
+          if-no-files-found: warn
