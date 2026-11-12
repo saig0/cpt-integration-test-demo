@@ -70,7 +70,7 @@ CAMUNDA_SYSTEM_CLOCKCONTROLLED=true c8 cluster start 8.9.28
 The environment variable makes the clock of the cluster controllable (CPT 8.9 changes the clock through the management API). The timer tests are **off** on this
 branch: the management API address is closed on purpose (see above), so the clock can't be changed. The variable only matters if you restore the address to experiment.
 
-**2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs.
+**2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs. It is ready when `http://localhost:8090/actuator/health/readiness` reports `UP`.
 
 ```bash
 mvn -pl process-application spring-boot:run
