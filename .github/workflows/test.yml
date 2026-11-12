@@ -54,12 +54,13 @@ jobs:
 
       - name: Start the process application
         # It deploys the BPMN/DMN and runs the job workers. It keeps running in the background while the tests run.
+        # The actuator readiness endpoint reports UP when the resources are deployed and the workers are running.
         run: |
           nohup mvn -B -ntp -pl process-application spring-boot:run > process-application.log 2>&1 &
           echo $! > process-application.pid
           for i in $(seq 1 120); do
-            if grep -q "Started InvoiceProcessApplication" process-application.log; then
-              echo "The process application is running."
+            if curl -fs http://localhost:8090/actuator/health/readiness | grep -q '"status":"UP"'; then
+              echo "The process application is ready."
               exit 0
             fi
             if ! kill -0 "$(cat process-application.pid)" 2>/dev/null; then
@@ -68,7 +69,7 @@ jobs:
             fi
             sleep 2
           done
-          echo "The process application didn't start in time:"; tail -n 50 process-application.log
+          echo "The process application is not ready in time:"; tail -n 50 process-application.log
           exit 1
 
       - name: Run the process tests

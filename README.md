@@ -71,7 +71,7 @@ c8 cluster start 8.11.0-alpha1
 No further setup is needed on this branch: CPT 8.11 changes the clock through the public clock API of the cluster. (CPT ≤ 8.10 and 8.11.0-alpha1 
 use the management API and need `CAMUNDA_SYSTEM_CLOCKCONTROLLED=true` in the environment of the start command, see the `8.10` and `8.9` branches.)
 
-**2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs.
+**2. Start the process application** in a second terminal. It deploys the BPMN/DMN and runs the job workers. It keeps running across test runs. It is ready when `http://localhost:8090/actuator/health/readiness` reports `UP`.
 
 ```bash
 mvn -pl process-application spring-boot:run
